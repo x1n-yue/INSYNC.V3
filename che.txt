@@ -1,0 +1,83 @@
+Build a professional, creative, animated GitHub Profile README for my client. Implement it directly in the current workspace.
+
+Start by inspecting the repository, README, existing assets, workflows, and any AGENTS.md instructions. Preserve unrelated files and existing useful content.
+
+Before personalizing the profile, ask for these missing details in one message:
+- GitHub username and display name
+- Developer title and short introduction
+- Technologies they actually use
+- Up to three featured projects with descriptions, repository links, and available demo links
+- Portfolio, LinkedIn, and public contact email
+- Preferred colors or visual style
+
+Reuse verified details already provided. If I tell you to proceed without missing information, use clearly labeled placeholders and list what needs replacing. Never invent experience, project features, contact links, or statistics.
+
+Create a cohesive full stack developer design containing:
+
+1. Custom animated SVG banner
+Display the client’s name and title. Animate a request traveling from the frontend through an API to a database and returning a response. Keep the static layout readable and support reduced motion where practical.
+
+2. Professional introduction
+Write a concise introduction that matches the client’s actual experience and interests.
+
+3. Technology icons
+Group verified technologies into frontend, backend, databases, and development tools. Use supported icon identifiers and consistent styling.
+
+4. Featured projects
+Show project descriptions, stacks, and supplied repository links. Include demo links only when available. Use supplied screenshots or recordings; do not fabricate application screenshots.
+
+5. Custom public GitHub stats
+Generate matching SVG cards from genuine public GitHub data. Label metrics and their scope accurately. Display placeholders before the first successful refresh and preserve existing assets if a refresh fails.
+
+6. Contribution animation
+Generate light and dark contribution-snake SVGs through GitHub Actions and embed them in the README.
+
+7. Contact buttons
+Include only supplied portfolio, LinkedIn, and public email links. Omit unavailable contacts.
+
+IMPLEMENTATION
+
+- Verify current tool usage against official documentation and maintained project repositories. If internet access is blocked, state which integrations remain unverified.
+- Use GitHub-compatible Markdown, supported HTML, SVG, and GIF assets.
+- Store custom assets locally and use relative README paths.
+- Use github.repository_owner in workflows where appropriate.
+- Use the built-in GITHUB_TOKEN when sufficient. Never request, print, or hardcode secrets.
+- Grant only required workflow permissions.
+- Prevent generated commits from triggering update loops.
+- Coordinate workflows to avoid conflicting pushes.
+- Keep essential profile content readable if external image services fail.
+- Keep dependencies minimal and document anything required.
+- Do not install packages globally.
+- Do not overwrite unrelated files or discard existing changes.
+- Do not commit, push, deploy, or change repository settings unless I explicitly authorize it.
+
+CREATE OR UPDATE
+
+- README.md
+- assets/ containing the custom graphics
+- scripts/ containing any generators
+- .github/workflows/ containing the update workflows
+- SETUP.md with easy instructions for GitHub and Windows
+- CHECKS.md with completed verification and remaining limitations
+
+VALIDATION
+
+Run appropriate local checks:
+- Parse generated SVGs.
+- Inspect visual layout using available rendering tools.
+- Validate workflow YAML and referenced paths.
+- Check stats calculations with representative data, including empty results and API failures.
+- Confirm that no fabricated statistics or unintended secrets appear.
+- Distinguish local checks from live GitHub workflow verification.
+
+Complete the implementation rather than stopping at a plan.
+
+Finish by reporting:
+- What you changed
+- Which checks passed
+- Any placeholders I must replace
+- Exact steps to upload or push the changes myself
+- How to manually run the workflows
+- Anything that still needs verification on GitHub
+
+Do not create a ZIP unless I request one; the deliverable is the working repository.

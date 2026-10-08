@@ -1,0 +1,91 @@
+# MASTER PROMPT: Remediate INSync audit (39 findings)
+
+## Role
+You are a senior full-stack engineer (React/Vite, Supabase Postgres/RLS/Storage, security). Fix every finding in `INSync_AUDIT_REPORT.md` (INS-001 to INS-039), using the fix checklist as your task list. Read both files fully before touching anything.
+
+## Hard rules (never violate)
+1. Authorization lives in RLS / controlled DB operations. Never rely on UI hiding. Never put a service-role key in browser code. Never weaken RLS to make a UI call work.
+2. Never run or re-run the destructive bootstrap `supabase/schema.sql` against existing data. Do not edit it into a "repair path."
+3. All DB changes go in new, versioned, additive migrations under `supabase/migrations/` (M01, M02, ...). Each has prerequisites, rollback notes, and a catalog-verification query. Do not execute against any real project. Produce SQL and a runbook only.
+4. Do not silently delete, merge or normalize legacy rows. For uniqueness/CHECK constraints, write a read-only anomaly query and a reviewable repair proposal first. Use NOT VALID then VALIDATE where appropriate.
+5. Never claim something is secure/fixed from "build passes." Every fix needs a test or a documented verification step. Be honest about what could not be verified (live Supabase, browser, a11y).
+6. Use disposable/synthetic data only. No real credentials, no `.env` secrets in output.
+7. Do not run `npm audit fix --force`. Dependency changes must be tested and compatible with Node/plugins.
+8. If a business rule is ambiguous (single shift per day vs multi-shift, who counts as "verified hours," broadcast audience, clearance criteria, current-year rule), STOP and list your assumed default in `DECISIONS.md`, pick the safest conservative default, and continue. Make the assumption easy to change.
+9. Preserve existing stack and UX conventions. No unrelated refactors.
+
+## Working method
+- Work phase by phase. After each phase: run `npm run build`, run all tests you added, update `FIX_PROGRESS.md` (finding ID, status, files changed, tests, remaining risk), commit with message `phase N: <summary> (INS-xxx, ...)`, then stop and print a summary before starting the next phase.
+- Add a test runner (Vitest) and, where possible, SQL/pgTAP-style or scripted policy tests. Convert the audit's local probes (UTC/Manila date bug, computeHours overnight, required-hours coercion, zero-row handler, maybeSingle cardinality, contrast ratios, chart aggregation) into permanent regression tests.
+- Extract business logic (hours, periods, metrics, rubric score) into shared pure modules so all three dashboards use one derivation.
+
+## Phase 0: Baseline (no behavior changes)
+- Add Vitest, `lint` and `test` scripts, `.env.example` (public keys only), `FIX_PROGRESS.md`, `DECISIONS.md`.
+- Write `supabase/inspection/` read-only SQL: the metadata queries in report section 7, plus anomaly queries for duplicate attendance per intern/date, partial/duplicate checklist types, invalid required_hours, role/assignment mismatches, bad evaluation JSON, orphan storage paths. Do not run them.
+- Write `supabase/tests/` fixtures spec: Admin, Instructor A/B, Intern A/B/C (C unassigned), Pending/Inactive variants, duplicate display names.
+
+## Phase 1: M01 Authority, status, row and field scope (INS-001 to 008)
+Single coordinated migration, since a gap in one path defeats the others.
+- INS-001: remove broad self-UPDATE on profiles. Allow only whitelisted basic fields (e.g. full_name, phone); protect id, email, role, status, student_id via column privileges and/or BEFORE UPDATE trigger that rejects changes unless caller is Active Admin.
+- INS-002: change `handle_new_user()` to always create role='intern', status='Pending'. Add `requested_role` column (non-authoritative). Admin approval sets the effective role. Document trusted first-Admin bootstrap. Remove staff options from public signup UI (request via requested_role only).
+- INS-003: update `current_role()` and add `is_active()` helper (SECURITY DEFINER, fixed search_path, explicit EXECUTE grants). Require Active status in every business-table policy and Storage policy. Pending/Inactive may read only own profile (status) and sign out.
+- INS-004: assignment-scoped policies for instructor on attendance, exceptions, evaluations, documents, alerts, interns, Storage (EXISTS on interns.instructor_id = auth.uid()). Explicit Admin branch. WITH CHECK on every write so intern_id/ownership can't be moved. Review operations cannot change ownership/assignment fields. Instructors cannot edit company/section/required_hours.
+- INS-005: scope profiles/interns SELECT to self, assigned relationships and Admin. Expose only needed fields for joins (name of own instructor/evaluator) via a restricted view or function. Re-verify all explicit FK joins in the UI.
+- INS-006: announcements: author_id must equal auth.uid() (WITH CHECK), target must be an assigned intern UUID, SELECT limited to recipient/author/Admin. Define broadcast = author's own roster (record in DECISIONS.md).
+- INS-007: attendance/exceptions owner policies: no direct arbitrary writes. Clock-in/out and correction submission via constrained RPCs (or strict WITH CHECK: status='Pending', reviewed_by null, verified=false, hours server-derived). Block owner edits to verified rows.
+- INS-008: documents: owner may only set file_name/file_path/uploaded fields and reset status to Pending via RPC/column privileges. Owner cannot insert requirements or set status/note/reviewer. file_path must start with the owner's uid folder.
+- Also add explicit GRANT/REVOKE for anon/authenticated on every table, function and view.
+- Deliver a policy test suite covering all 12 tables and Storage across roles x statuses x {own, assigned, foreign} x {SELECT, INSERT, UPDATE, DELETE}, plus direct field-tampering cases (RT-01 to RT-04). Update React code only as needed so legitimate flows keep working.
+
+## Phase 2: M02/M03 Trusted audit, private storage, atomic attendance (INS-009 to 012, 015, 016)
+- INS-009: remove client INSERT on audit_logs. Generate audit rows via triggers/RPCs with actor from auth.uid() and server time. Cover profile/role/status, assignment, master data (create/update/delete), attendance review, document review, evaluations. Remove client-side fake audit writes. Surface audit failures.
+- INS-010: `review_exception(exception_id, decision, note)` RPC: SECURITY DEFINER, checks active + assigned instructor/Admin, `SELECT ... FOR UPDATE`, conditional Pending-only transition, validated attendance upsert, trusted reviewer/time, audit, all in one transaction. Bulk RPC returns per-item outcomes. UI uses real results; no Approved state without reconciled attendance.
+- INS-011: apply the daily-record decision from DECISIONS.md. Unique(intern_id, log_date) (after anomaly report), guarded `clock_in()`/`clock_out()` RPCs (clock-out only when time_out IS NULL, targets row id). Disable buttons while pending; handle conflicts truthfully.
+- INS-012: store timestamptz clock events; business date derived in Asia/Manila server-side; open session found independent of today's date; overnight supported; duration computed in DB. Replace every `toISOString().slice(0,10)` date usage and local time reconstruction. Fix instructor "Active Now."
+- INS-015: separate migration that explicitly sets bucket `documents` private plus file size/MIME limits (UPDATE, not ON CONFLICT DO NOTHING). Add verification query.
+- INS-016: CHECKs and RPC validation: time_in < time_out (or explicit overnight), no future dates, max duration per DECISIONS.md, non-empty reason, one Pending exception per intern/date (partial unique index). Never clamp invalid to 0.
+- Tests: RT-08 to RT-13 including injected failures, concurrency, approve/reject races.
+
+## Phase 3: Operational honesty and tooling (INS-013, 014, 023, 038, 031, 037)
+- INS-013: mark `schema.sql` fresh-project-only in header and README; remove "safe to re-run" claims; add `supabase/migrations/README.md` with the nondestructive upgrade path, rehearsal and rollback notes. Separate clearly named disposable reset script if needed.
+- INS-014: upgrade Vite/esbuild/source-map-js to patched, compatible versions; restrict dev host exposure (no 0.0.0.0 by default). Rebuild and re-run `npm audit`; record residual advisories.
+- INS-023: until genuinely implemented, disable and visibly label every simulated control (bulk import, templates, audit export, backup, instructor reports, intern DTR/report/certificate exports, drag-drop zone, uptime literal). Remove fake "backup completed/import" audit entries. Then implement only: real CSV/XLSX template download, real audit CSV export, real DTR export (client-generated, correct data), and honest backup status text. Bulk import: implement real parse, validation and preview if feasible, otherwise leave disabled.
+- INS-038: remove password123 demo shortcuts from production builds (gate behind `import.meta.env.VITE_DEMO_MODE`). Add note to rotate any real accounts that used it.
+- INS-031: validate env at startup with a clear setup error screen (no crash at import), `.env.example`, deployment notes.
+- INS-037: align `engines`, README and `.nvmrc`/CI Node with lockfile (>=22).
+
+## Phase 4: Data model and workflow correctness (INS-017 to 022, 024, 025)
+- INS-017: evaluation RPC validating four integer 1-5 criteria, server-computed weighted score (25/35/20/20, rounded), author = auth.uid(), NOT NULL score, idempotency key. Intern UI shows criteria; null never displays as 0.
+- INS-018: shared validator for required_hours (finite, >0, defined max/precision) + DB CHECK. No `|| 486` fallback. Show persisted value.
+- INS-019: atomic admin RPC for role/assignment changes (validates Active instructor role, handles intern extension row, defined handling of assigned interns when demoting). Failure shows error, not generic success.
+- INS-020: UNIQUE(intern_id, doc_type); idempotent `attach_standard_docs()` inserting only missing types; UI shows partial vs complete.
+- INS-021: View/Download via short-lived signed URLs for owner and assigned staff; handle missing/expired/forbidden.
+- INS-022: client + bucket validation (MIME/size), generated safe object names (original name as metadata), upload-state busy UI, compensating cleanup on failed metadata write, document versioning with reviewed_by/reviewed_at and expected-version review, correct note handling. No global Storage DELETE.
+- INS-024: Intern announcements feed (loading/empty/error), UUID-based recipient selection with disambiguating labels.
+- INS-025: shared metrics module: true calendar week/month/year filters (Manila), summed vs averaged clearly labeled, year-aware grouping, logged vs verified hours distinguished, one clearance rule used on every screen, risk status computed not stale, remove hardcoded velocity or label it as an assumption.
+- Tests: RT-05 to RT-07, RT-14 to RT-17.
+
+## Phase 5: Reliability, state and failure handling (INS-026 to 028, 032, 039)
+- INS-026: every load captures errors; per-resource error/partial state, Retry/Refresh, no fabricated zeros, wrap in try/catch/finally.
+- INS-027: server-side aggregates (RPC/views) for totals, paginated detail queries with counts, audit log pagination, targeted refetch, refresh-on-focus, indexes (instructor_id, intern_id+log_date, etc.) in a migration.
+- INS-028: explicit auth state machine (loading/signed-out/profile-error/pending/ready), request-sequence guards, getSession error handling, missing-profile recovery screen with retry + sign out, unsupported-role fallback, finally-based submit state, honest email-confirmation/duplicate-signup messaging, surface logout errors. Keep listener cleanup. Add password reset/change flow only if trivial; otherwise note as scope.
+- INS-032: mutation functions return `{ok, error}`; modals close/reset only on success; drafts preserved on failure; enforce the 500-char limit; require revision note; disable while pending.
+- INS-039: all UPDATE/DELETE use `.select()` and assert row count (or RPC returns affected rows); zero rows = conflict/authorization error with refresh, no success toast, no audit entry.
+- Tests: RT-18, RT-19, with transport doubles.
+
+## Phase 6: Admin completeness, accessibility, polish (INS-029, 030, 033 to 036)
+- INS-029: impact-aware delete (count affected interns, confirm modal, optional reassignment), refresh dependent state, audit via Phase 2 mechanisms.
+- INS-030: section assignment on intern form, atomic `set_current_academic_year()` with partial unique index (one current), no hardcoded seed in live setup.
+- INS-033: Modal and Shell sheets: role="dialog", aria-modal, labelled-by, focus trap/return, Escape, max-height scroll; label/id on all inputs; aria-labels on icon buttons; toast live region (role=status/alert), mobile-safe placement above bottom nav.
+- INS-034: darken status text/button tokens to meet >=4.5:1 for small text; add contrast unit test over token pairs.
+- INS-035: record-specific labels (Add Company/Section/Academic Year, Edit -> Save Changes, Delete <name>, Activate vs Deactivate/Reactivate, Clear Fields vs Cancel, Approve/Reject Selected). Color convention: green Add, blue View/Search, orange Edit/Save, red Delete, purple Restore, gray secondary, with text/icons, never color alone.
+- INS-036: lazy-load dashboards and Recharts with Suspense + chunk-load error fallback; report before/after chunk sizes.
+
+## Final deliverables
+1. All code + migrations + tests committed per phase.
+2. `FIX_PROGRESS.md`: table of all 39 findings with status (Fixed / Fixed-pending-live-verification / Needs-decision / Not-fixed + reason), files, tests.
+3. `DECISIONS.md`: every assumed business rule.
+4. `supabase/RUNBOOK.md`: ordered migration steps, pre-checks (inspection queries), anomaly-resolution steps, rollback, post-checks.
+5. Final report: what is verified by automated tests, what still requires live Supabase / browser / screen-reader verification, and residual risks. Do not describe the system as secure or production-ready.
+
+Begin with Phase 0. Stop after each phase and wait for my "continue."
