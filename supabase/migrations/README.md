@@ -1,6 +1,6 @@
 # Versioned upgrade path
 
-New empty projects: review/apply `../initial_schema.sql` once, then M01-M12 in
+New empty projects: review/apply `../initial_schema.sql` once, then M01-M14 in
 numeric order before creating accounts. See `../../WEB_SETUP.md`. This does not
 change the inspection, repair-review or deferred validation gates below for
 existing projects. The new initial catalog is locally rehearsed, not live-verified.
@@ -24,8 +24,16 @@ files by glob or assume a bootstrap reset is a rollback.
 | 10 | `M10_master_data_lifecycle.sql` | M02/M07; guarded master-data deletion and atomic current-year selection. |
 | 11 | `M11_attendance_year_workflows.sql` | M01-M10 structural operations; new nullable year references and immutable domain snapshots, per-year checklists, expected-evidence attendance verification. No historical year backfill. Referenced years retained. M05/M09 remain independent historical validation gates on existing projects. |
 | 12 | `M12_section_announcements.sql` | M11; section recipient snapshots and author-scoped submission UUIDs. Raw announcement INSERT is revoked; deploy the RPC-based client after this migration. |
+| 13 | `M13_attendance_verification_precision.sql` | M11 (normally after M12); fixes expected-hours comparison after browser JSON conversion. Full timestamp comparison, permission checks, interval constraints, and stored hours remain intact. No data rewrite. |
+| 14 | `M14_last_active_admin.sql` | M07 (normally after M13); prevents role/status changes or profile deletion from removing the final Active Admin. Allows a handover when another Active Admin exists and retains the zero-admin first-Admin bootstrap. No data rewrite. |
 
-This client requires M11 and M12. Use a maintenance window and rehearse on a
+This client requires M11 and M12; apply M13 to correct fractional-hour verification.
+If M11/M12 are already installed, apply only M13; do not replay those files.
+Apply M14 after verifying the account lifecycle migrations. The current audit and
+client fixes are documented in `../../SYSTEM_FUNCTIONALITY_AUDIT.md`. The read-only
+`../inspection/05_workflow_readiness.sql` provides installation indicators;
+it does not replace the migration ledger or a definition/permission review.
+Use a maintenance window and rehearse on a
 disposable project before deploying SQL and client together. Old clients using
 raw announcement INSERT will fail after M12; the five-argument assignment RPC
 remains compatible. Existing NULL academic years are preserved; assigning a year
@@ -64,7 +72,7 @@ and `../tests/PHASE2.md` and `../tests/PHASE4.md`. Phase 2 also starts a fresh l
 race/fault tests. It accepts no external database URL/credentials and removes
 only its verified disposable directory after stopping the process.
 
-M01-M09 are human version labels, not automatic Supabase CLI timestamp discovery.
+M01-M14 are human version labels, not automatic Supabase CLI timestamp discovery.
 Record exact reviewed file hashes in the operator migration ledger; convert each
 to a timestamp filename only as part of a reviewed CLI adoption. Future Phase 5
 aggregate/index work starts at M10; do not reuse a committed version number.

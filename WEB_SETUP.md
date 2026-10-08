@@ -26,6 +26,8 @@ in this exact order; proceed only after it succeeds:
 11. [M10_master_data_lifecycle.sql](supabase/migrations/M10_master_data_lifecycle.sql)
 12. [M11_attendance_year_workflows.sql](supabase/migrations/M11_attendance_year_workflows.sql)
 13. [M12_section_announcements.sql](supabase/migrations/M12_section_announcements.sql)
+14. [M13_attendance_verification_precision.sql](supabase/migrations/M13_attendance_verification_precision.sql)
+15. [M14_last_active_admin.sql](supabase/migrations/M14_last_active_admin.sql)
 
 The initial file creates the 12 baseline tables and a private documents bucket.
 It contains no demo records, accounts or reset statements. It refuses existing
@@ -35,7 +37,9 @@ M05 and M09 can validate empty tables here; their historical-data gates still
 apply to existing projects. Keep an operator record of the files applied.
 
 M11 adds academic-year assignments and record snapshots plus normal attendance
-verification. M12 installs section announcements and retry protection. Apply both
+verification. M12 installs section announcements and retry protection. M13 fixes
+verification of fractional-hour shifts after browser numeric conversion. M14
+prevents removal of the final Active Admin. Apply these
 before deploying this client. Existing projects must keep old record years NULL;
 assign current internship years explicitly rather than inferring historical years.
 See [the workflow change report](WORKFLOW_CHANGE_REPORT.md) for rollout and checks.
@@ -80,7 +84,7 @@ Install Node.js **22.12.0 or later** (Node 22/24 are the documented test lines).
 Open PowerShell and run:
 
 ```powershell
-cd "C:\Users\Cris bryan\Downloads\INSync_Supabase_Converted (4)"
+cd "C:\Users\Cris bryan\Downloads\INSync.v3"
 npm ci
 npm run dev
 ```
@@ -153,7 +157,7 @@ build locally and is not a production hosting service.
 
 ## Verification and limits
 
-The new initial schema was tested with all nine actual migration files using
+The new initial schema was tested with migrations M01-M14 using
 local PGlite and synthetic provider tables. Tests cover empty initial data,
 closed initial API access, blocked early signup, Pending intern signup after
 migrations, and refusal/preservation of existing tables, accounts and buckets.

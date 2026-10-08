@@ -2,11 +2,15 @@
 
 Date: 2026-10-08
 
+The follow-up [overall functionality audit](SYSTEM_FUNCTIONALITY_AUDIT.md) records
+additional auth/audit/setup fixes, M14 final-Admin protection, and remaining
+priorities. It supersedes this report's earlier overall verification totals.
+
 ## Delivery status
 
 All ten requested workflow improvements are implemented in the local source.
-Database changes are supplied as M11 and M12 and rehearsed against disposable
-PostgreSQL. No live Supabase database, Auth account, or Storage object was changed.
+Database changes are supplied as M11, M12, and the M13 follow-up fix and rehearsed
+against disposable PostgreSQL. No live Supabase database, Auth account, or Storage object was changed.
 **Apply the migrations before deploying this client.**
 
 ## Earlier reported issues included in this release
@@ -86,6 +90,26 @@ File: [M12_section_announcements.sql](supabase/migrations/M12_section_announceme
 No RLS policy was broadened, and no service-role key or new production dependency
 was introduced.
 
+### M13 follow-up: fractional-hour attendance verification
+
+File: [M13_attendance_verification_precision.sql](supabase/migrations/M13_attendance_verification_precision.sql)
+
+- Reproduced a failure where a valid shift with seconds/microseconds returned
+  **Attendance changed; refresh before verifying**. PostgreSQL's exact numeric
+  hours survived in storage, but JSON parsing rounded them to a JavaScript number.
+  M11 incorrectly compared that number to the stored decimal with exact equality.
+- Compares expected hours using the browser's double-precision representation.
+  Stored hours are not rounded or rewritten. Timestamp comparisons remain exact,
+  including microseconds; the database interval constraint remains authoritative.
+- Retains current-assignment authorization, locks, mandatory audit, and retry
+  behavior. Regression tests cover JSON conversion, actual server clock-in/out,
+  modified hours, and a one-microsecond timestamp mismatch.
+- If M11/M12 are already installed, apply only M13 as postgres, then refresh the
+  Instructor page. This correction requires no new environment setting or client
+  build. Existing deployed migration files are unchanged.
+- This reproduces a code defect locally; the user's particular live failure is
+  not confirmed without their error message and deployed migration state.
+
 ## Academic-year behavior and operational choices
 
 - **Existing records are not backfilled.** Their NULL year is shown as
@@ -113,15 +137,36 @@ was introduced.
   the committed state first. Announcement retries retain their key while the screen
   remains mounted; after a page reload, check Sent Announcements before resubmitting.
 
+## Follow-up: 12-hour attendance display
+
+- Intern DTR times, the clock-in confirmation, submitted correction times, and
+  Instructor verification/correction tables now show 12-hour times with AM/PM
+  (for example, `16:30:00` displays as `04:30 PM`). The active session's clock-in
+  display already used the same format.
+- A shared formatter handles local database time fields without shifting them
+  into the browser's timezone. Noon and midnight show `12:00 PM` and `12:00 AM`.
+- This is a client display change. Stored timestamps, hours, RPC arguments,
+  elapsed durations, and raw CSV evidence keep their existing formats. No new
+  Supabase migration or setting is required; deploy the rebuilt website.
+- Verification: the 14 existing attendance and dashboard tests passed, lint
+  passed, production build passed, and eight direct formatting checks passed.
+
 ## Validation
+
+Completed-hours display follow-up: the Intern DTR, chart tooltips, chart axis,
+and clock-out confirmation use the shared two-decimal hours formatter. For
+example, `0.14133132277777777` displays as `0.14`. Stored hours, calculations,
+verification arguments, and CSV evidence retain full precision. No new Supabase
+migration is needed. All 13 focused dashboard/metrics tests, lint, and the
+production build passed for this update.
 
 Final local verification completed on 2026-10-08:
 
 | Check | Result |
 |---|---|
-| `npm test` | **20 test files passed; 2,221 tests passed** |
+| `npm test` | **20 test files passed; 2,223 tests passed**, including the M13 regressions |
 | `npm run lint` | **Passed** |
-| `npm run build` | **Passed**; production assets generated in `dist/` |
+| `npm run build` | **Passed** for the workflow release; M13 changes SQL/tests/docs only, so no new client build is required |
 
 Coverage includes:
 
@@ -135,7 +180,7 @@ Coverage includes:
   and mandatory-audit rollback.
 - Observed native lock waits: two reviewers retrying one record produce one update;
   an assignment transfer prevents the former instructor's pending verification.
-- Fresh-schema rehearsal through M12 using synthetic provider fixtures.
+- Fresh-schema rehearsal through M13 using synthetic provider fixtures.
 
 The complete run exposed an older M10 test that attempted a forbidden raw intern
 UPDATE and expected only one company audit event. Its fixture now uses the protected
@@ -146,11 +191,12 @@ were not weakened to satisfy the test.
 
 1. Follow [RUNBOOK.md](supabase/RUNBOOK.md) to establish the deployed migration state.
    Do not replay the initial schema or legacy reset against an existing project.
-2. Rehearse M11 and M12 on disposable data. Confirm the structural migrations through
+2. Rehearse M11, M12, and M13 on disposable data. Confirm the structural migrations through
    M10 are present. Existing M05/M09 historical-validation gates retain their own
    review requirements; this work does not normalize legacy records.
-3. In a maintenance window, apply **M11**, then **M12**, as the trusted database owner.
+3. In a maintenance window, apply **M11**, then **M12**, then **M13**, as the trusted database owner.
    Each file is transactional and requests a PostgREST schema-cache reload.
+   Apply only missing migrations. For projects already through M12, apply M13 only.
 4. Deploy the rebuilt client. Older clients using raw announcement INSERT will fail
    after M12, so coordinate the database/client rollout.
 5. In Admin → Interns, explicitly assign each current internship's year and save it,
@@ -160,7 +206,7 @@ were not weakened to satisfy the test.
    → Intern refresh, company/section/year display, section announcement delivery,
    rejection of unrelated users, and recovery from a disconnected network.
 
-Fresh-project setup instructions now include M10–M12. Keep the migrations and this
+Fresh-project setup instructions now include M10–M13. Keep the migrations and this
 report with the release record. After applying these migrations, use forward fixes
 that retain historical evidence and recipient/submission identities.
 

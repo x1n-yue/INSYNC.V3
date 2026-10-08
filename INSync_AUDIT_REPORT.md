@@ -1,5 +1,9 @@
 # INSync repository audit
 
+**Historical baseline:** this report predates the migrations and workflow fixes.
+For current findings and verification, see [SYSTEM_FUNCTIONALITY_AUDIT.md](SYSTEM_FUNCTIONALITY_AUDIT.md).
+The original evidence below is retained with its original dates and source references.
+
 Audit date: 2026-10-07 (Asia/Manila). Repository: `D:\Development\Projects\INSYNC.v2`. Reviewed HEAD: `f89766f0b1a2516b00e9cade263e10a64b9f2968`, including the existing untracked `AI_CONTEXT_PROMPT.md` as orientation. Source line references describe the files at audit time.
 
 ## 1. Overall assessment

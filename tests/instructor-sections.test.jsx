@@ -147,6 +147,18 @@ it("verifies a regular completed shift and immediately updates the intern's prog
   expect(container.textContent).toContain("Remaining: 8.00 verified hrs");
 });
 
+it("verifies historical attendance without claiming it increases assigned-year progress",async()=>{
+  data.interns[0].required_hours=16;data.interns[0].academic_year_id=id(30);
+  const row={id:id(201),intern_id:id(100),academic_year_id:null,log_date:"2026-10-01",time_in:"08:00:00",time_out:"16:00:00",
+    clocked_in_at:"2026-10-01T00:00:00Z",clocked_out_at:"2026-10-01T08:00:00Z",hours:8,verified:false,verified_by:null};
+  data.attendance_logs=[row];await click("Refresh data");await click("DTR Review");
+  rpc.mockResolvedValue({data:{...row,verified:true,verified_by:instructor.id}});
+  await click("Verify attendance");
+  expect(toast).toHaveBeenCalledWith("Attendance verified. This record belongs to another academic year; current assigned-year progress is unchanged.","success");
+  await filter(sectionA.id);await click("Progress Tracker");
+  expect(container.textContent).toContain("Remaining: 16.00 verified hrs");
+});
+
 async function enter(selector,value) {
   await act(async () => {
     const input=container.querySelector(selector);

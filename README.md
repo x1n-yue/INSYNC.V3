@@ -2,7 +2,9 @@
 
 React 19 / Vite / Tailwind, Supabase Auth, Postgres and Storage. The browser
 uses public keys; effective authorization belongs to RLS and controlled RPCs.
-The latest workflow changes require M11/M12 before client deployment; see
+The latest workflow changes require M11/M12, the M13 verification fix, and the
+M14 final-Admin guard. See the current [system functionality audit](SYSTEM_FUNCTIONALITY_AUDIT.md)
+for confirmed fixes and remaining priorities, and
 [WORKFLOW_CHANGE_REPORT.md](WORKFLOW_CHANGE_REPORT.md) for changes and rollout.
 Remediation is in progress: see FIX_PROGRESS.md for all 39 findings and limits.
 The system is not described as secure or production-ready.
@@ -11,7 +13,7 @@ The system is not described as secure or production-ready.
 
 For browser setup, the exact fresh Supabase SQL order, and first-Admin creation,
 see [WEB_SETUP.md](WEB_SETUP.md). New empty projects start with the seed-free
-[initial_schema.sql](supabase/initial_schema.sql), then M01-M12; existing projects
+[initial_schema.sql](supabase/initial_schema.sql), then M01-M14; existing projects
 must use the inspection/upgrade runbook instead.
 
 Use Node **22.12.0 or later** (supported test lines: 22 and 24), npm and the
@@ -19,7 +21,7 @@ committed lockfile. .nvmrc selects Node 22; Windows CI checks 22 and 24.
 
 ```powershell
 npm ci
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 npm run dev
 ```
 
@@ -53,7 +55,7 @@ record hashes, verify the catalog and coordinate client deployment. This session
 never applies SQL to a real project. A genuinely new deployment needs an operator-
 reviewed initial schema without demo seeds plus the reviewed migrations; the
 legacy bootstrap alone is insufficient. `supabase/initial_schema.sql` supplies
-that seed-free starting catalog for new empty projects; it still requires M01-M09
+that seed-free starting catalog for new empty projects; it still requires M01-M14
 and disposable live checks. No live bootstrap/seed is automated.
 
 Public registration always requests intern and creates intern/Pending. Pending

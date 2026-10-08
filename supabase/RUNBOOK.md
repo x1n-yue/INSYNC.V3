@@ -248,3 +248,26 @@ production readiness is asserted.
 Before deployment, verify the inspection result contains at most one `academic_years.is_current = true` row. Apply `M10_master_data_lifecycle.sql` only after M02 and M07 are committed. The migration aborts rather than choosing a current year when existing data has multiple current rows.
 
 After deployment, verify with disposable Admin data that: `admin_set_current_academic_year(uuid)` leaves exactly one current year; raw `is_current` writes are denied; `admin_delete_master('companies'|'course_sections'|'academic_years', uuid)` requires Active Admin authority; company/section deletion reports affected intern references and clears them in the same transaction; and a current academic year cannot be deleted. Do not apply this migration to a real project as part of this remediation session.
+
+## M11-M14 workflow upgrades
+
+See `../SYSTEM_FUNCTIONALITY_AUDIT.md` and `../WORKFLOW_CHANGE_REPORT.md` for the
+current workflow behavior, test evidence and limits. Review the deployed migration
+ledger and use `inspection/05_workflow_readiness.sql` as a read-only set of indicators;
+function/column presence alone does not establish exact definitions or permissions.
+
+Apply only missing reviewed files: M11 adds explicit year assignments/snapshots,
+per-year checklists and attendance verification; M12 adds section announcements and
+submission UUID retries; M13 corrects browser numeric precision during verification;
+M14 protects the final Active Admin against deactivation, demotion and deletion.
+M11/M12 require their earlier structural migrations; M13 requires M11, and M14
+requires M07. Normal fresh order is initial_schema, then M01-M14. Existing historical
+validation gates M05/M09 retain their separate review requirements.
+
+Do not replay successful files. M14 does not create/activate accounts or recover
+an already locked-out project; a trusted operator must review that recovery.
+The empty-project first-Admin bootstrap remains available. Rehearse an explicit
+handover to a second Active Admin, rejection of last-Admin removal, concurrent
+deactivation attempts, and Auth/profile deletion behavior with disposable accounts.
+Deploy the client fixes and complete real Auth/PostgREST/Storage/browser checks
+separately; no real project was contacted by the local audit.

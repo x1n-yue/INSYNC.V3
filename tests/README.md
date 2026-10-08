@@ -14,16 +14,23 @@ supabase/tests/PHASE3.md.
 synthetic Auth/RPC responses. It checks early auth events, signed-out startup,
 stale session responses, a working Retry action and a 15-second restoration
 timeout. It does not contact Supabase or validate a real browser session.
+The overall audit adds token-refresh draft preservation, account-switch isolation,
+profile-identity mismatch handling, visible sign-out failures, activation rechecks,
+and audit pagination/refresh regression coverage.
 
 Workflow improvements add `assignment-dashboards.test.jsx` and
 `instructor-sections.test.jsx` for actual dashboard rendering with synthetic
 transport, saved section/year persistence, company names, onboarding, section
 filters, normal verification, announcement busy/retry behavior and stalled-read
 recovery. `workflow-improvements.test.js` checks year-scoped metrics and request
-timeouts/cancellation. `workflow-improvements-postgres.test.js` applies M01-M12
+timeouts/cancellation. `workflow-improvements-postgres.test.js` applies M01-M14
 to its own native disposable Postgres and checks authorization, expected evidence,
-idempotent verification, immutable year history, per-year checklists, correction
+idempotent verification, fractional-hour JSON precision, actual server-clocked
+verification, immutable year history, per-year checklists, correction
 year retention, announcement audiences and submission keys. No live project is used.
+M14 coverage also rejects last-Admin deactivation/demotion and Auth deletion,
+allows an explicit handover, checks private trigger grants, and observes a real
+lock wait while two administrators attempt to deactivate themselves.
 
 `audit-baseline.test.js` records remaining audit probes as **characterization
 tests of known defects**, not proof of correctness. After Phase 4 it has 3 cases:

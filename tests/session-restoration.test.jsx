@@ -11,7 +11,13 @@ const { auth, rpc, listeners } = vi.hoisted(() => ({
 }));
 vi.mock("../src/lib/supabaseClient", () => ({ supabase: { auth, rpc }, setupError: null }));
 vi.mock("../src/components/LoginPage", () => ({ default: () => <div>Sign in screen</div> }));
-vi.mock("../src/components/InternDashboard", () => ({ default: () => <div>Intern dashboard</div> }));
+vi.mock("../src/components/InternDashboard", async () => {
+  const { useState } = await import("react");
+  return { default: function DraftDashboard() {
+    const [draft, setDraft] = useState("");
+    return <div>Intern dashboard<input aria-label="Draft accomplishment" value={draft} onChange={event => setDraft(event.target.value)} /></div>;
+  } };
+});
 
 const session = { user: { id: "synthetic-intern" } };
 let root;
@@ -29,6 +35,7 @@ beforeEach(() => {
     return { data: { subscription: { unsubscribe: () => listeners.delete(callback) } } };
   });
   rpc.mockResolvedValue({ data: { id: session.user.id, role: "intern", status: "Active" }, error: null });
+  auth.signOut.mockResolvedValue({ error: null });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -123,5 +130,54 @@ it("a stalled profile read times out and the profile Retry action starts a new r
   expect(container.textContent).toContain("Profile unavailable");
   expect(container.textContent).toContain("Profile loading timed out");
   await retry();
+  expect(container.textContent).toContain("Intern dashboard");
+});
+
+it("preserves an unsaved dashboard draft while a token refresh rechecks the same account",async()=>{
+  await renderApp(); await emit("SIGNED_IN",session);
+  const input=container.querySelector('[aria-label="Draft accomplishment"]');
+  await act(async()=>{
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"Writing today's report");
+    input.dispatchEvent(new Event("input",{bubbles:true}));
+  });
+  let resolve;
+  rpc.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+  await emit("TOKEN_REFRESHED",{...session,access_token:"synthetic-refreshed"});
+  expect(container.querySelector('[aria-label="Draft accomplishment"]')?.value).toBe("Writing today's report");
+  await act(async()=>resolve({data:{id:session.user.id,role:"intern",status:"Active"}}));
+  expect(container.querySelector('[aria-label="Draft accomplishment"]').value).toBe("Writing today's report");
+});
+
+it("hides the previous account's dashboard while loading a different signed-in user",async()=>{
+  await renderApp(); await emit("SIGNED_IN",session);
+  rpc.mockImplementationOnce(()=>new Promise(()=>{}));
+  await emit("SIGNED_IN",{user:{id:"another-synthetic-intern"}});
+  expect(container.textContent).toContain("Loading profile");
+  expect(container.querySelector('[aria-label="Draft accomplishment"]')).toBeNull();
+});
+
+it("rejects a profile for a different account instead of displaying it or loading forever",async()=>{
+  rpc.mockResolvedValueOnce({data:{id:"another-synthetic-intern",role:"intern",status:"Active"}});
+  await renderApp();await emit("SIGNED_IN",session);
+  expect(container.textContent).toContain("Profile unavailable");
+  expect(container.textContent).toContain("does not match your signed-in account");
+  expect(container.querySelector('[aria-label="Draft accomplishment"]')).toBeNull();
+});
+
+it.each(["Pending","Inactive"])("shows sign-out failure for a %s account",async(status)=>{
+  rpc.mockResolvedValue({data:{id:session.user.id,status}});
+  auth.signOut.mockResolvedValue({error:{message:"Synthetic sign-out failure"}});
+  await renderApp(); await emit("SIGNED_IN",session);
+  const button=[...container.querySelectorAll("button")].find(button=>button.textContent==="Back to Sign In");
+  await act(async()=>button.click());
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Synthetic sign-out failure");
+});
+
+it("lets a pending account recheck activation without signing out",async()=>{
+  rpc.mockResolvedValueOnce({data:{id:session.user.id,status:"Pending"}});
+  await renderApp(); await emit("SIGNED_IN",session);
+  const button=[...container.querySelectorAll("button")].find(button=>button.textContent==="Check activation");
+  expect(button).toBeTruthy();
+  await act(async()=>button.click());
   expect(container.textContent).toContain("Intern dashboard");
 });

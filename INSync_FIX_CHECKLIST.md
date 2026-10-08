@@ -1,5 +1,9 @@
 # INSync fix checklist
 
+**Historical checklist:** the unchecked items below describe the original audit.
+They do not establish the current implementation status. See the
+[current functionality audit](SYSTEM_FUNCTIONALITY_AUDIT.md) and [remediation progress](FIX_PROGRESS.md).
+
 Audit: [INSync_AUDIT_REPORT.md](INSync_AUDIT_REPORT.md), 2026-10-07, HEAD `f89766f0b1a2516b00e9cade263e10a64b9f2968`. **39 findings: 2 Critical, 13 High, 21 Medium, 3 Low.** All tasks below are proposed and unchecked. Creating this checklist did not authorize or perform fixes, migrations, dependency changes or real-record repairs.
 
 Preserve React/Vite and Supabase Auth/Postgres/Storage with RLS as the authorization boundary. Use disposable accounts/data for verification. Never put service-role credentials in the browser, weaken RLS to make UI calls work, or rerun the destructive bootstrap against existing records.

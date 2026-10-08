@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { manilaDate, recordRpc, reviewCorrections } from "../lib/authority";
-import { formatBusinessDate, isOpenSession } from "../lib/attendance";
+import { formatAttendanceTime, formatBusinessDate, isOpenSession } from "../lib/attendance";
 import { RUBRIC, evaluationResult, requiredHours, rubricScore } from "../lib/business";
 import { displayHours, internMetrics } from "../lib/metrics";
 import { completeRows, saveEvaluation } from "../lib/workflows";
@@ -319,7 +319,9 @@ export default function InstructorDashboard({ profile, onLogout }) {
         p_expected_out: row.clocked_out_at, p_expected_hours: row.hours });
       if (!result.ok || result.data.verified !== true) return toast(result.error || "Verification was not confirmed; refresh before retrying.", "error");
       setMetricAttendance(prev => prev?.map(item => item.id === result.data.id ? result.data : item));
-      toast("Attendance verified. Assigned-year progress now includes these hours.", "success");
+      const assignment = rosterBase.find(intern => intern.id === result.data.intern_id);
+      const historical = assignment && (assignment.academicYearId ?? null) !== (result.data.academic_year_id ?? null);
+      toast(historical ? "Attendance verified. This record belongs to another academic year; current assigned-year progress is unchanged." : "Attendance verified.", "success");
     } finally { attendanceInFlight.current = false; setAttendanceBusy(null); }
   };
 
@@ -652,7 +654,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
             <section className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3 space-y-1">
                 <h2 className="text-sm font-semibold">Attendance Verification</h2>
-                <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>Review the recorded shift and accomplishments before verifying. History includes all academic years for the shown interns; each record keeps its original year.</p>
+                <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>Review the recorded shift and accomplishments before verifying. History includes all academic years for the shown interns; each record keeps its original year. Only records from the intern's assigned academic year count toward their current progress.</p>
               </div>
               {resourceErrors.attendance && <p role="alert" className="px-4 text-xs">Attendance is stale or unavailable. Refresh before verifying.</p>}
               <div className="overflow-x-auto">
@@ -668,8 +670,8 @@ export default function InstructorDashboard({ profile, onLogout }) {
                         <td className="px-4 py-3 text-xs">{sectionName(intern?.sectionId)}</td>
                         <td className="px-4 py-3 text-xs">{yearName(row.academic_year_id)}</td>
                         <td className="px-4 py-3 text-xs whitespace-nowrap">{formatBusinessDate(row.log_date)}</td>
-                        <td className="px-4 py-3 text-xs">{row.time_in ?? "—"}</td>
-                        <td className="px-4 py-3 text-xs">{row.time_out ?? "—"}{endDate && endDate !== row.log_date ? ` (${formatBusinessDate(endDate)})` : ""}</td>
+                        <td className="px-4 py-3 text-xs whitespace-nowrap">{formatAttendanceTime(row.time_in)}</td>
+                        <td className="px-4 py-3 text-xs whitespace-nowrap">{formatAttendanceTime(row.time_out)}{endDate && endDate !== row.log_date ? ` (${formatBusinessDate(endDate)})` : ""}</td>
                         <td className="px-4 py-3 text-xs">{displayHours(row.hours)}</td>
                         <td className="px-4 py-3 text-xs min-w-48 whitespace-pre-wrap break-words">{row.accomplishment || "—"}</td>
                         <td className="px-4 py-3 text-xs">{evidence.state === "legacy-or-invalid" ? "Correction needed" : row.verified ? "Verified" : evidence.state === "open" ? "In progress" : "Pending verification"}</td>
@@ -723,8 +725,8 @@ export default function InstructorDashboard({ profile, onLogout }) {
                       </td>
                       <td className="px-4 py-3 text-xs font-medium">{ex.internName}</td>
                       <td className="px-4 py-3 text-xs">{formatBusinessDate(ex.log_date, { month: "short", day: "numeric" })}</td>
-                      <td className="px-4 py-3 text-xs font-mono">{ex.claimed_time_in}</td>
-                      <td className="px-4 py-3 text-xs font-mono">{ex.claimed_time_out}
+                      <td className="px-4 py-3 text-xs font-mono whitespace-nowrap">{formatAttendanceTime(ex.claimed_time_in)}</td>
+                      <td className="px-4 py-3 text-xs font-mono whitespace-nowrap">{formatAttendanceTime(ex.claimed_time_out)}
                         {ex.claimed_end_date && ex.claimed_end_date !== ex.log_date && <div>Ends {formatBusinessDate(ex.claimed_end_date)}</div>}
                       </td>
                       <td className="px-4 py-3 text-xs max-w-xs" style={{ color: "var(--muted-foreground)" }}>{ex.reason}</td>

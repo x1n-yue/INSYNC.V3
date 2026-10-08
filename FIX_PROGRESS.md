@@ -1,8 +1,13 @@
 # INSync remediation progress
 
+Latest overall functionality audit: [SYSTEM_FUNCTIONALITY_AUDIT.md](SYSTEM_FUNCTIONALITY_AUDIT.md).
+It records the auth/draft and audit-page fixes, setup repair, M14 final-Admin guard,
+current verification, and remaining priorities.
+
 Latest workflow delivery (2026-10-08): see
 [WORKFLOW_CHANGE_REPORT.md](WORKFLOW_CHANGE_REPORT.md) for the ten cross-role
-workflow improvements, M11/M12, current verification and deployment requirements.
+workflow improvements, M11/M12, the M13 attendance verification fix, current
+verification and deployment requirements.
 The historical phase records below are retained and do not describe the latest
 local build/test results.
 

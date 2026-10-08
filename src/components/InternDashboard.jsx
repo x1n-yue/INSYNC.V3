@@ -10,7 +10,7 @@ import {
 } from "recharts";
 import { supabase } from "../lib/supabaseClient";
 import { manilaDate, recordRpc } from "../lib/authority";
-import { elapsedSession, formatBusinessDate, formatClockTime, isOpenSession } from "../lib/attendance";
+import { elapsedSession, formatAttendanceTime, formatBusinessDate, formatClockTime, isOpenSession } from "../lib/attendance";
 import { downloadArtifact, dtrArtifact } from "../lib/exports";
 import { evaluationResult } from "../lib/business";
 import { chartHours, displayHours, filterAttendance, internMetrics } from "../lib/metrics";
@@ -213,7 +213,7 @@ export default function InternDashboard({ profile, onLogout }) {
       const result = await recordRpc(supabase, "clock_in");
       if (!result.ok) return toast(result.error, "error");
       setDtr((prev) => [result.data, ...prev]);
-      toast("Clocked in at " + result.data.time_in, "success");
+      toast("Clocked in at " + formatAttendanceTime(result.data.time_in), "success");
     } finally { setClockBusy(false); }
   };
 
@@ -224,7 +224,7 @@ export default function InternDashboard({ profile, onLogout }) {
       const result = await recordRpc(supabase, "clock_out", { p_id: todayRow.id, p_accomplishment: accomp });
       if (!result.ok) { toast(result.error, "error"); return result; }
       setDtr((prev) => prev.map((d) => d.id === result.data.id ? result.data : d));
-      toast(`Clocked out — ${Number(result.data.hours).toFixed(2)} hrs logged`, "success");
+      toast(`Clocked out — ${displayHours(result.data.hours)} hrs logged`, "success");
       return result;
     } finally { setClockBusy(false); }
   };
@@ -386,10 +386,10 @@ export default function InternDashboard({ profile, onLogout }) {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                       <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} domain={[0, "auto"]} />
+                      <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={displayHours} axisLine={false} tickLine={false} domain={[0, "auto"]} />
                       <Tooltip
                         contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "12px" }}
-                        formatter={(v) => [`${v} hrs`, "Logged hours (sum)"]}
+                        formatter={(v) => [`${displayHours(v)} hrs`, "Logged hours (sum)"]}
                       />
                       <Area type="monotone" dataKey="hours" stroke="var(--primary)" strokeWidth={2} fill="url(#hoursGrad)"
                         dot={{ r: 3, fill: "var(--primary)", strokeWidth: 0 }} activeDot={{ r: 5 }} />
@@ -534,13 +534,13 @@ export default function InternDashboard({ profile, onLogout }) {
                             )}
                           </td>
                           <td className="px-4 py-3 text-xs">{yearName(d.academic_year_id)}</td>
-                          <td className="px-4 py-3 text-xs font-mono">{d.time_in ?? "—"}</td>
-                          <td className="px-4 py-3 text-xs font-mono" style={{ color: !d.time_out ? "var(--muted-foreground)" : undefined }}>
+                          <td className="px-4 py-3 text-xs font-mono whitespace-nowrap">{formatAttendanceTime(d.time_in)}</td>
+                          <td className="px-4 py-3 text-xs font-mono whitespace-nowrap" style={{ color: !d.time_out ? "var(--muted-foreground)" : undefined }}>
                             {!d.time_out && isToday && isClockedIn ? (
                               <span className="font-mono" style={{ color: "var(--info)" }}>{elapsed}</span>
-                            ) : (d.time_out ?? "—")}
+                            ) : formatAttendanceTime(d.time_out)}
                           </td>
-                          <td className="px-4 py-3 text-xs font-mono">{d.hours ?? "—"}</td>
+                          <td className="px-4 py-3 text-xs font-mono">{d.hours == null ? "—" : displayHours(d.hours)}</td>
                           <td className="px-4 py-3 text-xs max-w-xs" style={{ color: "var(--muted-foreground)" }}>
                             {d.accomplishment ? <span style={{ color: "var(--foreground)" }}>{d.accomplishment}</span> : "—"}
                           </td>
@@ -622,7 +622,7 @@ export default function InternDashboard({ profile, onLogout }) {
                       style={{ borderTop: "1px solid var(--border)" }}>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium">
-                          {formatBusinessDate(ex.log_date, { month: "short", day: "numeric" })} · {ex.claimed_time_in} – {ex.claimed_time_out}
+                          {formatBusinessDate(ex.log_date, { month: "short", day: "numeric" })} · {formatAttendanceTime(ex.claimed_time_in)} – {formatAttendanceTime(ex.claimed_time_out)}
                           {ex.claimed_end_date && ex.claimed_end_date !== ex.log_date && <> (ends {formatBusinessDate(ex.claimed_end_date)})</>}
                         </div>
                         <div className="text-xs mt-0.5 truncate" style={{ color: "var(--muted-foreground)" }}>{ex.reason}</div>

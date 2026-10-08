@@ -38,7 +38,7 @@ const announce = (actor=IA, key=id(100), section=A, title="Reminder") => act(act
 beforeAll(async () => {
   cluster=await disposablePostgres(); db=await cluster.connect();
   await db.query(sql("tests/baseline.sql"));
-  for (const name of ["M01_authority.sql","M02_trusted_audit.sql","M03_attendance_integrity.sql","M04_private_documents_bucket.sql","M05_validate_attendance.sql","M06_rubric_hours.sql","M07_account_lifecycle.sql","M08_document_versions.sql","M09_validate_domain.sql","M10_master_data_lifecycle.sql","M11_attendance_year_workflows.sql","M12_section_announcements.sql"])
+  for (const name of ["M01_authority.sql","M02_trusted_audit.sql","M03_attendance_integrity.sql","M04_private_documents_bucket.sql","M05_validate_attendance.sql","M06_rubric_hours.sql","M07_account_lifecycle.sql","M08_document_versions.sql","M09_validate_domain.sql","M10_master_data_lifecycle.sql","M11_attendance_year_workflows.sql","M12_section_announcements.sql","M13_attendance_verification_precision.sql","M14_last_active_admin.sql"])
     await db.query(sql(`migrations/${name}`));
   for (const uid of [ADMIN,IA,IB,SA,SB,SC,SD]) await db.query("insert into auth.users(id,email) values($1,$2)",[uid,`${uid}@synthetic.invalid`]);
   await db.query("update public.profiles set status='Active',role=case when id=$1 then 'admin' when id in ($2,$3) then 'instructor' else 'intern' end",[ADMIN,IA,IB]);
@@ -58,6 +58,32 @@ describe("M11 trusted attendance and academic years", () => {
     const count=(await db.query("select count(*) n from public.audit_logs")).rows[0].n;
     expect((await verify(row))[0].id).toBe(row.id);
     expect((await db.query("select count(*) n from public.audit_logs")).rows[0].n).toBe(count);
+  });
+  it("verifies fractional-hour shifts after the browser JSON numeric round trip",async () => {
+    const {rows:[{payload}]}=await db.query(`with inserted as (
+      insert into public.attendance_logs(intern_id,log_date,time_in,time_out,clocked_in_at,clocked_out_at,hours)
+      values($1,'2026-10-01','08:00:00.123456','16:00:01.654321',
+        '2026-10-01T00:00:00.123456Z','2026-10-01T08:00:01.654321Z',28801.530865::numeric/3600)
+      returning *) select row_to_json(inserted)::text payload from inserted`,[SA]);
+    // PostgREST sends numeric hours as JSON numbers; a browser parses them as
+    // doubles while preserving the complete timestamp strings.
+    const row=JSON.parse(payload);
+    expect(typeof row.hours).toBe("number");
+    const [saved]=await verify(row);
+    expect(saved.verified).toBe(true);
+    expect(saved.clocked_in_at.toISOString()).toBe(new Date(row.clocked_in_at).toISOString());
+    expect((await verify(row))[0].id).toBe(row.id);
+    await expect(verify({...row,hours:row.hours+0.001})).rejects.toThrow(/changed/);
+    await expect(verify({...row,clocked_in_at:row.clocked_in_at.replace("123456","123455")})).rejects.toThrow(/changed/);
+  });
+  it("verifies server-clocked attendance through a JSON response without rewriting stored hours",async()=>{
+    const [opened]=await act(SA,"select * from public.clock_in()");
+    await act(SA,"select * from public.clock_out($1,'Completed daily report')",[opened.id]);
+    const {rows:[{payload,exact_hours}]}=await db.query("select row_to_json(a)::text payload,hours::text exact_hours from public.attendance_logs a where id=$1",[opened.id]);
+    const row=JSON.parse(payload);
+    expect(row.hours).toBeGreaterThan(0);
+    expect((await verify(row))[0].verified).toBe(true);
+    expect((await db.query("select hours::text exact_hours from public.attendance_logs where id=$1",[row.id])).rows[0].exact_hours).toBe(exact_hours);
   });
   it.each([null,IB,SA])("denies verification by unassigned or non-staff actor %s",async (actor) => {
     await expect(verify(await attendance(),actor)).rejects.toThrow(/permission denied|not permitted/);
@@ -158,6 +184,48 @@ describe("M12 section audience and retry identity", () => {
   });
 });
 
+describe("last active administrator protection",()=>{
+  it("runs the read-only workflow readiness checks against the complete schema",async()=>{
+    const results=await db.query(sql("inspection/05_workflow_readiness.sql"));
+    expect(results[1].rows.every(row=>row.present)).toBe(true);
+    expect(results[2].rows).toHaveLength(9);
+    expect(results[3].rows[0].m13_comparison_present).toBe(true);
+    expect(results[4].rows[0].tgenabled).toBe("O");
+    expect(Number(results[5].rows[0].active_admins)).toBe(1);
+    expect(results[7].rows[0].public).toBe(false);
+    expect(results[8].rows.every(row=>row.relrowsecurity)).toBe(true);
+  });
+  it.each([{status:"Inactive"},{status:"Pending"},{role:"intern"},{role:"instructor"}])("rejects removing the final active administrator: %j",async(patch)=>{
+    await expect(act(ADMIN,"select public.admin_update_account($1,$2)",[ADMIN,patch])).rejects.toThrow(/at least one Active Admin/);
+    expect((await db.query("select count(*)::int n from public.profiles where role='admin' and status='Active'")).rows[0].n).toBe(1);
+  });
+  it("allows a handover to another active administrator and ordinary name edits",async()=>{
+    await act(ADMIN,"select public.admin_update_account($1,$2)",[ADMIN,{full_name:"Renamed administrator"}]);
+    await db.query("update public.interns set instructor_id=null where instructor_id=$1",[IB]);
+    await act(ADMIN,"select public.admin_update_account($1,$2)",[IB,{role:"admin"}]);
+    await act(ADMIN,"select public.admin_update_account($1,$2)",[ADMIN,{status:"Inactive"}]);
+    await expect(act(IB,"select public.admin_update_account($1,$2)",[IB,{role:"instructor"}])).rejects.toThrow(/at least one Active Admin/);
+  });
+  it("also prevents an Auth cascade from deleting the final administrator",async()=>{
+    // Match initial_schema.sql's real profile/Auth cascade; the older shared
+    // synthetic baseline uses a restrictive FK instead.
+    await db.query("alter table public.profiles drop constraint profiles_id_fkey; alter table public.profiles add constraint profiles_id_fkey foreign key(id) references auth.users(id) on delete cascade");
+    await db.query("savepoint final_admin_delete");
+    await expect(db.query("delete from auth.users where id=$1",[ADMIN])).rejects.toThrow(/at least one Active Admin/);
+    await db.query("rollback to savepoint final_admin_delete");
+    expect((await db.query("select count(*)::int n from auth.users where id=$1",[ADMIN])).rows[0].n).toBe(1);
+  });
+  it("keeps the trigger helper private with a fixed schema path",async()=>{
+    const {rows:[row]}=await db.query(`select p.prosecdef,p.proconfig,
+      has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated,
+      has_function_privilege('anon',p.oid,'EXECUTE') anon
+      from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname='guard_last_active_admin'`);
+    expect(row).toMatchObject({prosecdef:true,authenticated:false,anon:false});
+    expect(row.proconfig).toContain("search_path=pg_catalog, public");
+  });
+});
+
 async function actorTransaction(client,actor) {
   await client.query("begin");await client.query("set local role authenticated");
   await client.query("select set_config('request.jwt.claim.sub',$1,true)",[actor]);
@@ -204,3 +272,31 @@ describe("M11 native verification races",()=>{
     }
   },15000);
 });
+
+it("serializes two administrators deactivating themselves and retains one active administrator",async()=>{
+  const control=await cluster.connect(),first=await cluster.connect(),second=await cluster.connect();
+  let pending;
+  try{
+    await control.query("begin");
+    await control.query("update public.interns set instructor_id=null where instructor_id=$1",[IB]);
+    await control.query("update public.profiles set role='admin' where id=$1",[IB]);
+    await control.query("commit");
+    await actorTransaction(first,ADMIN);
+    await first.query("select public.admin_update_account($1,$2)",[ADMIN,{status:"Inactive"}]);
+    await actorTransaction(second,IB);
+    pending=second.query("select public.admin_update_account($1,$2)",[IB,{status:"Inactive"}]).then(result=>({result}),error=>({error}));
+    await waitForBlock(control,second,first);
+    await first.query("commit");
+    expect((await pending).error?.message).toContain("at least one Active Admin");
+    await second.query("rollback");
+    expect((await control.query("select count(*)::int n from public.profiles where role='admin' and status='Active'")).rows[0].n).toBe(1);
+  }finally{
+    await first.query("rollback");await second.query("rollback");if(pending)await pending;
+    await control.query("rollback");await control.query("begin");
+    await control.query("update public.profiles set status='Active' where id=$1",[ADMIN]);
+    await control.query("update public.profiles set role='instructor',status='Active' where id=$1",[IB]);
+    await control.query("update public.interns set instructor_id=$1 where id in ($2,$3)",[IB,SB,SD]);
+    await control.query("commit");
+    await first.end();await second.end();await control.end();
+  }
+},15000);

@@ -30,12 +30,12 @@ beforeEach(()=>{
   };
   completeRows.mockImplementation(async(_client,table)=>data[table]??[]);
   from.mockImplementation(table=>{
-    let selected="*", single=false;
+    let selected="*", single=false, page;
     const filters=[];
     const query={
       select(columns){selected=columns;return query;},eq(key,value){filters.push(row=>row[key]===value);return query;},
       is(key,value){filters.push(row=>(row[key]??null)===value);return query;},
-      order(){return query;},range(){return query;},maybeSingle(){single=true;return query;},
+      order(){return query;},range(start,end){page=[start,end];return query;},maybeSingle(){single=true;return query;},
       then(resolve,reject){
         if(table==="interns"&&stall)return new Promise(()=>{}).then(resolve,reject);
         let rows=(data[table]??[]).filter(row=>filters.every(filter=>filter(row)));
@@ -44,7 +44,9 @@ beforeEach(()=>{
           ...(selected.includes("course_sections(")?{course_sections:data.course_sections.find(section=>section.id===row.section_id)}:{}),
           ...(selected.includes("academic_years(")?{academic_years:data.academic_years.find(year=>year.id===row.academic_year_id)}:{}),
         }));
-        return Promise.resolve({data:single?rows[0]??null:rows,count:rows.length}).then(resolve,reject);
+        const count=rows.length;
+        if(page)rows=rows.slice(page[0],page[1]+1);
+        return Promise.resolve({data:single?rows[0]??null:rows,count}).then(resolve,reject);
       },
     };
     return query;
@@ -111,4 +113,17 @@ it("turns a stalled assignment read into a recoverable error instead of waiting 
   stall=false;await click("Refresh data");
   expect(container.textContent).toContain("Example Company");
   expect(container.textContent).toContain("Last updated:");
+});
+
+it("keeps audit records aligned with the page label after Previous and Refresh data",async()=>{
+  data.audit_logs=Array.from({length:55},(_,index)=>({id:id(400+index),created_at:"2026-10-08T00:00:00Z",actor_name:"Synthetic Admin",action:`Audit event ${index+1}`,detail:"Synthetic audit record"}));
+  await render(AdminDashboard); await click("Audit Logs");
+  const hasEvent=(number)=>[...container.querySelectorAll("div")].some(item=>item.textContent===`Legacy (provenance unverified) | Audit event ${number}`);
+  expect(hasEvent(1)).toBe(true);
+  await click("Next");
+  expect(container.textContent).toContain("Page 2");expect(hasEvent(51)).toBe(true);expect(hasEvent(1)).toBe(false);
+  await click("Previous");
+  expect(container.textContent).toContain("Page 1");expect(hasEvent(1)).toBe(true);expect(hasEvent(51)).toBe(false);
+  await click("Next");await click("Refresh data");
+  expect(container.textContent).toContain("Page 2");expect(hasEvent(51)).toBe(true);expect(hasEvent(1)).toBe(false);
 });

@@ -59,6 +59,8 @@ export default function AdminDashboard({ profile, onLogout }) {
   const [resourceErrors, setResourceErrors] = useState({});
   const loadSequence = useRef(0);
   const [auditPage, setAuditPage] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const auditSequence = useRef(0);
   const [auditCount, setAuditCount] = useState(null);
   const AUDIT_PAGE_SIZE = 50;
 
@@ -95,25 +97,42 @@ export default function AdminDashboard({ profile, onLogout }) {
   };
 
   const loadAuditPage = async (page = auditPage) => {
+    const request = ++auditSequence.current;
+    setAuditLoading(true);
     const from = page * AUDIT_PAGE_SIZE;
-    const { data, error, count } = await withTimeout(supabase.from("audit_logs")
-      .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, from + AUDIT_PAGE_SIZE - 1));
-    if (error) throw error;
-    setLogs(data ?? []);
-    setAuditCount(count ?? null);
+    try {
+      const { data, error, count } = await withTimeout(supabase.from("audit_logs")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, from + AUDIT_PAGE_SIZE - 1));
+      if (request !== auditSequence.current) return;
+      if (error) throw error;
+      setLogs(data ?? []);
+      setAuditCount(count ?? null);
+      setAuditPage(page);
+      setResourceErrors(prev => ({ ...prev, audit: undefined }));
+    } catch (error) {
+      if (request === auditSequence.current) throw error;
+    } finally {
+      if (request === auditSequence.current) setAuditLoading(false);
+    }
+  };
+  const changeAuditPage = async (page) => {
+    try { await loadAuditPage(page); }
+    catch (error) { setResourceErrors(prev => ({ ...prev, audit: error.message || "Audit history unavailable" })); }
   };
 
   const loadAll = async () => {
     const sequence = ++loadSequence.current;
+    const auditRequest = ++auditSequence.current;
+    setAuditLoading(false);
     setLoading(true);
     const capture = captureRequest;
     try {
       const [profilesResult, auditResult, companyResult, sectionResult, yearResult, internsResult, docsResult, attendanceResult] = await Promise.all([
         capture(completeRows(supabase, "profiles").then(data => ({ data }))),
-        capture(supabase.from("audit_logs").select("*", { count: "exact" }).order("created_at", { ascending: false }).order("id", { ascending: false }).range(0, AUDIT_PAGE_SIZE - 1)),
+        capture(supabase.from("audit_logs").select("*", { count: "exact" }).order("created_at", { ascending: false }).order("id", { ascending: false }).range(auditPage * AUDIT_PAGE_SIZE, (auditPage + 1) * AUDIT_PAGE_SIZE - 1)),
         capture(supabase.from("companies").select("*").order("name")),
         capture(supabase.from("course_sections").select("*").order("name")),
         capture(supabase.from("academic_years").select("*").order("label", { ascending: false })),
@@ -137,8 +156,10 @@ export default function AdminDashboard({ profile, onLogout }) {
       });
       assign("documents", docsResult, data => setMetricDocuments(data));
       assign("attendance", attendanceResult, data => setMetricAttendance(data));
-      if (auditResult?.error) errors.audit = auditResult.error.message || String(auditResult.error);
-      else { setLogs(auditResult.data ?? []); setAuditCount(auditResult.count ?? null); }
+      if (auditRequest === auditSequence.current) {
+        if (auditResult?.error) errors.audit = auditResult.error.message || String(auditResult.error);
+        else { setLogs(auditResult.data ?? []); setAuditCount(auditResult.count ?? null); }
+      }
       setResourceErrors(errors);
       if (!Object.values(errors).some(Boolean)) setLastUpdated(new Date());
       setMetricsError(errors.profiles || errors.interns || errors.documents || errors.attendance || null);
@@ -158,14 +179,9 @@ export default function AdminDashboard({ profile, onLogout }) {
   };
   useEffect(() => {
     loadAll();
-  }, []);
-
-  useEffect(() => {
-    if (auditPage === 0) return;
-    loadAuditPage(auditPage).catch(error => setResourceErrors(prev => ({ ...prev, audit: error.message || "Audit history unavailable" })));
-    // loadAuditPage is a stable local read helper; auditPage is the only trigger.
+    // Initial load only; subsequent refreshes and page changes are explicit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auditPage]);
+  }, []);
 
   const filtered = users.filter(
     (u) =>
@@ -366,7 +382,7 @@ export default function AdminDashboard({ profile, onLogout }) {
       <Shell userName={profile.full_name} userEmail={profile.email} userRole="Administrator"
         navItems={navItems} activeTab={tab} onTabChange={setTab} onLogout={onLogout}>
         <div className="p-6 max-w-6xl mx-auto space-y-5">
-          <RefreshStatus loading={loading || Boolean(savingInternId) || accountBusy || masterBusy || Boolean(attachingDocsId)} lastUpdated={lastUpdated} onRefresh={loadAll} />
+          <RefreshStatus loading={loading || auditLoading || Boolean(savingInternId) || accountBusy || masterBusy || Boolean(attachingDocsId)} lastUpdated={lastUpdated} onRefresh={loadAll} />
           {Object.keys(resourceErrors).some((key) => resourceErrors[key]) && <div role="alert" className="rounded-lg px-4 py-3 text-sm flex flex-wrap items-center gap-3" style={{ background: "var(--warning-bg)", color: "var(--foreground)", border: "1px solid var(--warning)" }}><span>Some data could not be refreshed. Existing values may be stale.</span><button onClick={loadAll} className="font-semibold underline">Retry refresh</button></div>}
           <div className="flex items-start justify-between">
             <div>
@@ -670,9 +686,9 @@ export default function AdminDashboard({ profile, onLogout }) {
                 </div>
               ))}
               <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderTop: "1px solid var(--border)" }}>
-                <button disabled={auditPage === 0 || Boolean(resourceErrors.audit)} onClick={() => setAuditPage(p => Math.max(0, p - 1))} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: "var(--secondary)" }}>Previous</button>
-                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>Page {auditPage + 1}{auditCount == null ? "" : ` · ${auditCount} records`}</span>
-                <button disabled={Boolean(resourceErrors.audit) || auditCount == null || (auditPage + 1) * AUDIT_PAGE_SIZE >= auditCount} onClick={() => setAuditPage(p => p + 1)} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: "var(--secondary)" }}>Next</button>
+                <button disabled={auditLoading || auditPage === 0 || Boolean(resourceErrors.audit)} onClick={() => changeAuditPage(Math.max(0, auditPage - 1))} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: "var(--secondary)" }}>Previous</button>
+                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{auditLoading ? "Loading audit page… · " : ""}Page {auditPage + 1}{auditCount == null ? "" : ` · ${auditCount} records`}</span>
+                <button disabled={auditLoading || Boolean(resourceErrors.audit) || auditCount == null || (auditPage + 1) * AUDIT_PAGE_SIZE >= auditCount} onClick={() => changeAuditPage(auditPage + 1)} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: "var(--secondary)" }}>Next</button>
               </div>
             </div>
           )}
