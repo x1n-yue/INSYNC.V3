@@ -1,7 +1,8 @@
 # Versioned upgrade path
 
-New empty projects: review/apply `../initial_schema.sql` once, then M01-M14 in
-numeric order before creating accounts. See `../../WEB_SETUP.md`. This does not
+New empty projects: review/apply `../initial_schema.sql` once, then the structural
+M01-M15 migrations in numeric order before creating accounts. M16 is optional
+legacy operational infrastructure; retain it where already installed. See `../../WEB_SETUP.md`. This does not
 change the inspection, repair-review or deferred validation gates below for
 existing projects. The new initial catalog is locally rehearsed, not live-verified.
 
@@ -26,13 +27,20 @@ files by glob or assume a bootstrap reset is a rollback.
 | 12 | `M12_section_announcements.sql` | M11; section recipient snapshots and author-scoped submission UUIDs. Raw announcement INSERT is revoked; deploy the RPC-based client after this migration. |
 | 13 | `M13_attendance_verification_precision.sql` | M11 (normally after M12); fixes expected-hours comparison after browser JSON conversion. Full timestamp comparison, permission checks, interval constraints, and stored hours remain intact. No data rewrite. |
 | 14 | `M14_last_active_admin.sql` | M07 (normally after M13); prevents role/status changes or profile deletion from removing the final Active Admin. Allows a handover when another Active Admin exists and retains the zero-admin first-Admin bootstrap. No data rewrite. |
+| 15 | `M15_dashboard_metrics.sql` | Trusted postgres and M14, with prior structural migrations. Adds RLS/security-invoker metrics and Intern charts, authenticated-only EXECUTE, fixed search paths and owner/year indexes. No history rewrite; deploy SQL before the new metric client. |
 
-This client requires M11 and M12; apply M13 to correct fractional-hour verification.
-If M11/M12 are already installed, apply only M13; do not replay those files.
-Apply M14 after verifying the account lifecycle migrations. The current audit and
-client fixes are documented in `../../SYSTEM_FUNCTIONALITY_AUDIT.md`. The read-only
-`../inspection/05_workflow_readiness.sql` provides installation indicators;
-it does not replace the migration ledger or a definition/permission review.
+| 16 | `M16_admin_operations.sql` | Trusted postgres, M15 and provider service_role. Adds durable server-only import/backup jobs, private row outcomes/email reservations, summary-only Active Admin reads, service-only prepare/claim/reconcile RPCs and transactional redacted audit. No existing data rewrite. |
+
+The focused browser client requires the structural migrations through M15.
+M16 is retained for earlier server-only operational jobs and history; no UI calls
+those operations. This scope cleanup introduces no migration or database change. M13 corrects
+fractional-hour verification and M14 protects final-Admin availability. Apply only
+missing reviewed files: a catalog and ledger verified through M14 needs M15 for core browser workflows;
+through M15 needs no SQL for this cleanup. Leave already-installed M16 intact.
+M05/M09 remain independently gated historical validations. See
+`../../FUNCTIONALITY_FIX_REPORT.md` and the read-only
+`../inspection/05_workflow_readiness.sql` for catalog/definition/grant review.
+Installation indicators alone do not replace the operator ledger.
 Use a maintenance window and rehearse on a
 disposable project before deploying SQL and client together. Old clients using
 raw announcement INSERT will fail after M12; the five-argument assignment RPC
@@ -72,10 +80,9 @@ and `../tests/PHASE2.md` and `../tests/PHASE4.md`. Phase 2 also starts a fresh l
 race/fault tests. It accepts no external database URL/credentials and removes
 only its verified disposable directory after stopping the process.
 
-M01-M14 are human version labels, not automatic Supabase CLI timestamp discovery.
+M01-M16 are human version labels, not automatic Supabase CLI timestamp discovery.
 Record exact reviewed file hashes in the operator migration ledger; convert each
-to a timestamp filename only as part of a reviewed CLI adoption. Future Phase 5
-aggregate/index work starts at M10; do not reuse a committed version number.
+to a timestamp filename only as part of a reviewed CLI adoption. Future migrations start after M16; do not reuse committed version numbers.
 
 Rollback: before commit SQL errors roll back the transaction. After commit disable
 affected operations and apply a reviewed forward repair while keeping authorization
@@ -86,6 +93,5 @@ Phase 3 changes bootstrap/legacy-patch comments and operator/client guidance onl
 it adds no database migration and executes no SQL. Legacy bootstrap is fresh-
 disposable-only, destructive and insufficient for a remediated deployment alone.
 Never treat its hardcoded example seeds as current live organization/year data.
-Verify tooling, setup screen and honest downloads with ../tests/PHASE3.md.
-
-| 10 | `M10_master_data_lifecycle.sql` | M02/M07 + master-data lifecycle | Guarded master deletes with impact reporting, atomic current academic-year selection, and a single-current-year uniqueness rule. Requires operator review of existing current-year state before deployment. |
+The earlier download checks in ../tests/PHASE3.md are historical; current reader
+and scope coverage is described in ../../tests/README.md.

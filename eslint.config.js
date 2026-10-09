@@ -7,6 +7,10 @@ export default [
   { ignores: ["node_modules/**", "dist/**", "coverage/**", "**/*.timestamp-*.mjs"] },
   js.configs.recommended,
   {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: { globals: globals.node },
+  },
+  {
     files: ["**/*.{js,jsx}"],
     languageOptions: {
       ecmaVersion: "latest",

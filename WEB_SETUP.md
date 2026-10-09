@@ -28,6 +28,8 @@ in this exact order; proceed only after it succeeds:
 13. [M12_section_announcements.sql](supabase/migrations/M12_section_announcements.sql)
 14. [M13_attendance_verification_precision.sql](supabase/migrations/M13_attendance_verification_precision.sql)
 15. [M14_last_active_admin.sql](supabase/migrations/M14_last_active_admin.sql)
+16. [M15_dashboard_metrics.sql](supabase/migrations/M15_dashboard_metrics.sql)
+17. Optional legacy operational infrastructure: [M16_admin_operations.sql](supabase/migrations/M16_admin_operations.sql)
 
 The initial file creates the 12 baseline tables and a private documents bucket.
 It contains no demo records, accounts or reset statements. It refuses existing
@@ -39,8 +41,11 @@ apply to existing projects. Keep an operator record of the files applied.
 M11 adds academic-year assignments and record snapshots plus normal attendance
 verification. M12 installs section announcements and retry protection. M13 fixes
 verification of fractional-hour shifts after browser numeric conversion. M14
-prevents removal of the final Active Admin. Apply these
-before deploying this client. Existing projects must keep old record years NULL;
+prevents removal of the final Active Admin. M15 adds authorized server metrics
+and chart aggregation with supporting indexes. Apply the structural migrations
+through M15 before deploying this client. M16 retains earlier server-only operational
+jobs and their trusted audit; the focused UI does not use them. Existing installations
+keep M16 and its historical records. Existing projects must keep old record years NULL;
 assign current internship years explicitly rather than inferring historical years.
 See [the workflow change report](WORKFLOW_CHANGE_REPORT.md) for rollout and checks.
 
@@ -157,7 +162,7 @@ build locally and is not a production hosting service.
 
 ## Verification and limits
 
-The new initial schema was tested with migrations M01-M14 using
+The new initial schema was tested with migrations M01-M16 using
 local PGlite and synthetic provider tables. Tests cover empty initial data,
 closed initial API access, blocked early signup, Pending intern signup after
 migrations, and refusal/preservation of existing tables, accounts and buckets.
@@ -168,3 +173,34 @@ before relying on the deployment. No SQL was applied to a remote project.
 Provider references: [Supabase React setup](https://supabase.com/docs/guides/getting-started/quickstarts/reactjs),
 [Auth redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls),
 [Vite static deployment](https://vite.dev/guide/static-deploy.html).
+
+## Recovery callback and release configuration
+
+For the default local root path, allow both `http://127.0.0.1:5173/` and
+`http://127.0.0.1:5173/?flow=recovery` in Auth redirect URLs. Match the actual
+port and pathname if different. For hosting, use your exact HTTPS app pathname
+and that pathname with `?flow=recovery`; avoid broad production wildcards.
+The client derives these from its current origin/pathname and discards unrelated
+query/hash values. Set the provider Site URL to the intended app address.
+
+Keep confirmation enabled. Review reset/confirmation templates, supported SMTP
+configuration, email quotas/rate limits and session settings in the actual provider.
+The UI uses generic eligibility responses, a 60-second request cooldown and bounded
+SDK waits; provider rate limits remain authoritative. Recovery callback errors show
+an expired/invalid-link path, and updating a password requires an authenticated
+session. Test confirmation, resend, reset, expiration and password update using
+approved disposable accounts; local mocks do not send email.
+
+No additional `VITE_` setting is introduced. The focused browser workflows do not
+require an Admin API or GitHub worker. Existing server-only operational tooling is
+documented in the historical [deployment report](DEPLOYMENT_READINESS_REPORT.md);
+keep its private settings out of browser build inputs. Provider backup/restore and
+monitoring remain operator responsibilities.
+Run `npm run verify:release` and the read-only workflow inspection before a coordinated
+SQL/client rollout. See [the current report](FUNCTIONALITY_FIX_REPORT.md) and
+[operations runbook](supabase/OPERATIONS_RUNBOOK.md). Only missing reviewed prerequisites may be applied. This scope cleanup adds no
+migration; a project verified through M15 needs no SQL for the focused UI. Never rerun initial_schema on an existing project.
+
+Recovery APIs: [password reset](https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail),
+[confirmation resend](https://supabase.com/docs/reference/javascript/auth-resend),
+[password authentication](https://supabase.com/docs/guides/auth/passwords).

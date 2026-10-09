@@ -1,3 +1,8 @@
+> Current scope and verification: [PROJECT_SCOPE.md](../PROJECT_SCOPE.md) and
+> [SCOPE_SIMPLIFICATION_REPORT.md](../SCOPE_SIMPLIFICATION_REPORT.md). This cleanup
+> adds no SQL. Existing data, RLS, grants and migration history remain intact.
+> Export/import/backup UI instructions in older phase notes are historical.
+
 # Nondestructive remediation runbook
 
 Phases 0-4, 2026-10-07. **M01-M09 authored and rehearsed only in fresh synthetic
@@ -157,10 +162,10 @@ rebuild/redeploy. Missing/malformed settings render Setup required without SDK
 construction. Dev/preview listen on loopback; static HTTPS deployment serves dist
 with SPA fallback. Format checks do not validate connectivity/JWT signatures/RLS.
 
-Follow tests/PHASE3.md for disposable browser/API checks on templates, all-row audit
-and DTR CSV, injected failure, count changes and inactive sessions. Export limit:
-50,000 records, count-checked keyset reads rather than a transactional snapshot.
-No official certification or backup is claimed. Verify disabled controls, absent
+The earlier template/export/disabled-control checks in tests/PHASE3.md are
+historical. Verify that those entry points are absent under the current scope.
+Core count-checked keyset loading retains its 50,000-row bound, failure handling
+and inactive-session rejection; it is not a transactional snapshot. Verify absent
 production demo shortcuts and provider backup status separately. Operators must
 rotate real accounts that reused the old demo password; no real inventory/login/
 rotation happens here.
@@ -261,7 +266,7 @@ per-year checklists and attendance verification; M12 adds section announcements 
 submission UUID retries; M13 corrects browser numeric precision during verification;
 M14 protects the final Active Admin against deactivation, demotion and deletion.
 M11/M12 require their earlier structural migrations; M13 requires M11, and M14
-requires M07. Normal fresh order is initial_schema, then M01-M14. Existing historical
+requires M07. Normal fresh order is initial_schema, then M01-M15. Existing historical
 validation gates M05/M09 retain their separate review requirements.
 
 Do not replay successful files. M14 does not create/activate accounts or recover
@@ -271,3 +276,32 @@ handover to a second Active Admin, rejection of last-Admin removal, concurrent
 deactivation attempts, and Auth/profile deletion behavior with disposable accounts.
 Deploy the client fixes and complete real Auth/PostgREST/Storage/browser checks
 separately; no real project was contacted by the local audit.
+
+## M15 functionality release
+
+Read `../SCOPE_SIMPLIFICATION_REPORT.md` for current status; the earlier functionality
+report and Phase 5 notes above are historical. Read `OPERATIONS_RUNBOOK.md` for backup/restore responsibilities,
+monitoring integration and disposable provider smoke tests.
+
+After inspecting the actual ledger/catalog with `inspection/05_workflow_readiness.sql`,
+a project confirmed through M14 applies only `migrations/M15_dashboard_metrics.sql`
+as postgres before the new client. It creates three fixed-path, security-invoker
+helpers/RPCs, denies anonymous EXECUTE, grants authenticated EXECUTE and adds
+owner/year indexes. Check definitions, owners, privileges and RLS, then exercise
+own/assigned/unrelated/inactive requests. The helper classifies legacy/invalid
+attendance as unknown rather than inventing hours. No evidence is rewritten.
+
+Generate file hashes with `node scripts/migration-manifest.mjs`; it executes no SQL.
+M15 was rehearsed on a fresh initial catalog and a native upgrade containing
+existing accounts/NULL-year history. API/browser behavior and actual deployment
+remain unverified. Keep M05/M09 historical validation gates separate. A pre-commit
+migration error rolls back; after commit use a reviewed forward repair with access
+closed. Do not drop evidence or replay bootstrap as recovery.
+## Retained operational infrastructure
+
+The earlier [deployment report](../DEPLOYMENT_READINESS_REPORT.md) describes
+server-only M16 jobs and worker recovery tooling. Those remain for operational
+continuity and history; their browser controls are removed. A project confirmed
+through M15 needs no SQL for this cleanup. Leave installed M16 tables, job records,
+RLS and service-only routines intact. Provider backup/restore is an operator
+responsibility. Use [WEB_SETUP.md](../WEB_SETUP.md) for current browser deployment.

@@ -5,7 +5,7 @@ import { withTimeout } from "./requests";
 export async function recordRpc(client, name, args = {}) {
   try {
     const { data, error } = await withTimeout(client.rpc(name, args), "Request timed out. Refresh to check whether the change was saved before retrying.");
-    if (error) return { ok: false, error: error.message, data: null };
+    if (error) return { ok: false, error: error.message, data: null, code: error.code };
     const row = Array.isArray(data) ? (data.length === 1 ? data[0] : null) : data;
     if (!row?.id) return { ok: false, error: "No single record returned; refresh and retry.", data: null };
     if (args.p_id && row.id !== args.p_id) return { ok: false, error: "Unexpected record returned; refresh and retry.", data: null };

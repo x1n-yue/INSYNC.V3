@@ -1,19 +1,22 @@
 import { recordRpc } from "./authority";
 import { requiredHours, rubricScore } from "./business";
-import { readExportRows } from "./exports";
-import { withTimeout } from "./requests";
+import { readRows } from "./rows";
+import { remainingTime, withTimeout } from "./requests";
 
-export async function completeRows(client, table, ownerId) {
-  return withTimeout(readCompleteRows(client, table, ownerId), "Loading data timed out. Refresh and retry.", 20000);
+export async function completeRows(client, table, ownerId, options) {
+  return withTimeout(readCompleteRows(client, table, ownerId, { ...options, deadline: Date.now() + 20000 }), "Loading data timed out. Refresh and retry.", 20000);
 }
-async function readCompleteRows(client, table, ownerId) {
+async function readCompleteRows(client, table, ownerId, options) {
   const active = async () => {
-    const { data, error } = await client.rpc("my_profile");
-    if (error || data?.status !== "Active") throw new Error(error?.message || "Account changed; refresh your session");
+    const budget = remainingTime(options.deadline);
+    const { data, error } = await withTimeout(client.rpc("my_profile"), undefined, budget);
+    if (error || data?.status !== "Active" || !data.id || !data.role) throw new Error(error?.message || "Account changed; refresh your session");
+    return data;
   };
-  await active();
-  const rows = await readExportRows(client, table, "*", ownerId);
-  await active();
+  const profile = await active();
+  const rows = await readRows(client, table, "*", ownerId, options);
+  const final = await active();
+  if (profile.id !== final.id || profile.role !== final.role) throw new Error("Account changed during loading; refresh your session");
   return rows;
 }
 export function saveAssignment(client, internId, form) {

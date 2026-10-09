@@ -18,12 +18,23 @@ The overall audit adds token-refresh draft preservation, account-switch isolatio
 profile-identity mismatch handling, visible sign-out failures, activation rechecks,
 and audit pagination/refresh regression coverage.
 
+Current scope checks cover all role navigation (including mobile overflow), removal
+of reporting/import/backup/certificate controls, dashboard clocking, instructor
+supervision actions and evaluation retry identity. Shared row traversal and
+attendance evidence remain covered by rows.test.js and functionality-reliability.test.js.
+Export-only and removed-UI tests were deleted with their code.
+
+Existing admin-operations.test.js and backup-worker.test.js exercise retained
+server/operator infrastructure without real email or provider traffic. Native
+M16 policy/history tests remain; no job tables or historical rows were removed.
+These tests do not imply that import/backup are application features.
+
 Workflow improvements add `assignment-dashboards.test.jsx` and
 `instructor-sections.test.jsx` for actual dashboard rendering with synthetic
 transport, saved section/year persistence, company names, onboarding, section
 filters, normal verification, announcement busy/retry behavior and stalled-read
 recovery. `workflow-improvements.test.js` checks year-scoped metrics and request
-timeouts/cancellation. `workflow-improvements-postgres.test.js` applies M01-M14
+timeouts/cancellation. `workflow-improvements-postgres.test.js` applies M01-M15
 to its own native disposable Postgres and checks authorization, expected evidence,
 idempotent verification, fractional-hour JSON precision, actual server-clocked
 verification, immutable year history, per-year checklists, correction
@@ -88,3 +99,41 @@ feed transports, legacy-preserving M06-M09 gates and native final-stage grants,
 RLS, atomic lifecycle, immutable versions, audit faults and seven observed races.
 Read `../supabase/tests/PHASE4.md` for scope, pending real API/browser cases and
 Storage metadata/physical-byte limitations. No test executes a real project.
+
+## Functionality fixes (R01-R14)
+
+Run `npm run verify:release` for the complete test/lint/build/dependency/whitespace
+sequence. The current scope results are in
+[SCOPE_SIMPLIFICATION_REPORT.md](../SCOPE_SIMPLIFICATION_REPORT.md). Earlier
+functionality reports and counts are historical evidence for their original releases.
+
+- `functionality-reliability.test.js`: API-cap-safe scoped detail pages and complete
+  table/RPC traversal, exact-count SDK headers, truncation/drift/identity rejection,
+  auth-lock timeouts, stalled/late Storage operations and commit reconciliation,
+  recovery URLs/generic responses/rate limits, account-scoped reload drafts,
+  Manila audit filters and account-isolated loading.
+- `functionality-ui.test.jsx`: rendering and rejected-lazy-chunk boundaries,
+  associated login labels, email pending/cooldown/timeout, authenticated password
+  update and returned identity, explicit AM/PM round trips and incomplete input,
+  mobile dialog keyboard focus/Escape/return, draft-safe refresh prompts, redacted
+  health events and observer cleanup. These are jsdom checks, not device/AT tests.
+- Dashboard regression suites: audit navigation/filter/refresh and literal event
+  details, persisted assignment drafts, raw-evidence-free Admin metrics, refreshed
+  verified progress and historical exclusion, section-scoped document loading,
+  announcement lost-response reconciliation after full unmount/remount, original
+  UUID retries, and uninterrupted typing/focus during a stalled manual refresh.
+- `session-restoration.test.jsx`: preserved original recovery/isolation checks plus
+  PASSWORD_RECOVERY routing and expired callback handling.
+- Native workflow SQL suite: M15 upgrade leaves preexisting history unchanged,
+  RLS/anonymous/inactive boundaries, fixed invoker paths/grants, paginated rosters,
+  numerical equivalence for current/year/NULL history, partial and custom checklists,
+  versioned approvals/revocation/revision, fractional precision, malformed evidence,
+  all chart periods and a 300-row serialized-transfer comparison. Previous native
+  audit rollback, verification/assignment races and final-Admin races still execute.
+- `initial-schema.test.js`: fresh seed-free initial schema through M15 in PGlite,
+  retained existing-catalog refusal checks. Both SQL fixtures use synthetic provider
+  relations. Neither verifies actual JWT/PostgREST/Storage/email delivery.
+
+No credentials or external database URL are read by the tests. Production builds
+and provider inspection are separate from live browser journeys. Pending disposable
+provider journey/restore checks are listed in `supabase/OPERATIONS_RUNBOOK.md`.

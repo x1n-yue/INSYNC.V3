@@ -5,3 +5,8 @@ dist
 !.env.example
 .DS_Store
 .test-postgres/
+.vercel/
+backup-output/
+backups/
+*.dump
+*.tar.gz.enc

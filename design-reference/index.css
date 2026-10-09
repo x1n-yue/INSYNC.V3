@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: 'DM Sans', sans-serif;
+}
+
+:root {
+  /* --- Customizable tokens --- */
+  --background: #f5f7fb;
+  --foreground: #17213a;
+  --card: #ffffff;
+  --card-foreground: #17213a;
+
+  /* Institutional blue */
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --primary-light: #eff6ff;
+  --primary-mid: #bfdbfe;
+
+  /* Sidebar */
+  --sidebar-bg: #0f172a;
+  --sidebar-fg: #f8fafc;
+  --sidebar-muted: #94a3b8;
+  --sidebar-active-bg: rgba(59, 130, 246, 0.16);
+  --sidebar-active-fg: #93c5fd;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+
+  --secondary: #f1f5f9;
+  --secondary-foreground: #334155;
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  --accent: #2563eb;
+  --accent-foreground: #ffffff;
+  --border: #e2e8f0;
+  --ring: #2563eb;
+  --radius: 10px;
+
+  /* Status colors */
+  --success: #16a34a;
+  --success-bg: #dcfce7;
+  --warning: #d97706;
+  --warning-bg: #fef3c7;
+  --danger: #dc2626;
+  --danger-bg: #fee2e2;
+  --info: #0369a1;
+  --info-bg: #e0f2fe;
+}
+
+.dark {
+  --background: #0d1117;
+  --foreground: #e2e8f0;
+  --card: #161b27;
+  --card-foreground: #e2e8f0;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --primary-light: #172f55;
+  --primary-mid: #1d4ed8;
+  --sidebar-bg: #090e1a;
+  --sidebar-fg: #f8fafc;
+  --sidebar-muted: #64748b;
+  --sidebar-active-bg: rgba(59, 130, 246, 0.18);
+  --sidebar-active-fg: #93c5fd;
+  --sidebar-border: rgba(255,255,255,0.05);
+  --secondary: #1e2740;
+  --secondary-foreground: #94a3b8;
+  --muted: #1a2235;
+  --muted-foreground: #64748b;
+  --accent: #3b82f6;
+  --accent-foreground: #ffffff;
+  --border: #1e2d42;
+  --ring: #3b82f6;
+  --radius: 10px;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 4px; height: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-mono {
+  font-family: 'DM Sans', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  transition: opacity 150ms ease, transform 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: var(--secondary);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+select {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--primary-mid);
+  color: var(--foreground);
+}
+
+.login-page {
+  background-image:
+    radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--primary) 9%, transparent), transparent 32%),
+    radial-gradient(circle at 88% 90%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 30%);
+}
+
+.dashboard-content [style*="background: var(--card)"][style*="border: 1px solid var(--border)"] {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025), 0 8px 24px rgba(15, 23, 42, 0.025);
+}
+
+.dashboard-content table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.dashboard-content table tbody tr:hover {
+  background: color-mix(in srgb, var(--primary) 3%, transparent);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--muted-foreground) 72%, transparent);
+}

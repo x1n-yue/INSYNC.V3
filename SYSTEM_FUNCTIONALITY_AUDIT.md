@@ -1,4 +1,12 @@
+> Historical record: this document describes an earlier release or task.
+> The current INSync.v3 scope is defined in [PROJECT_SCOPE.md](PROJECT_SCOPE.md).
+> Reporting/export, bulk-import, backup UI and certificate issuance are outside the current user-facing scope.
+
 # INSync overall functionality audit
+
+Historical baseline retained. The 2026-10-08 follow-up implementation and current
+R01-R14 status are in [FUNCTIONALITY_FIX_REPORT.md](FUNCTIONALITY_FIX_REPORT.md).
+Original findings and validation counts below describe their recorded release.
 
 Date: 2026-10-08, Asia/Manila. Scope: the current local React/Vite application,
 Supabase schema and migrations, automated tests, setup instructions, and CI.

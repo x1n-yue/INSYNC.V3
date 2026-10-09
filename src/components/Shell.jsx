@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { IconGradCap, IconChevronLeft, IconChevronRight, IconLogOut, IconGrid } from "./Icons";
+
+import Modal from "./Modal";
 
 const MAX_BOTTOM_TABS = 5; // if navItems fits within this, show them all; otherwise 4 + "More"
 
@@ -16,6 +18,7 @@ export default function Shell({
   const [collapsed, setCollapsed] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const mainId = useId();
 
   const initials = userName
     .split(" ")
@@ -30,36 +33,38 @@ export default function Shell({
   const overflowHasActive = overflowTabs.some((item) => item.id === activeTab);
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="app-shell flex overflow-hidden">
+      <a className="skip-link" href={`#${mainId}`} onClick={event => { event.preventDefault(); document.getElementById(mainId)?.focus(); }}>Skip to content</a>
       {/* ── Desktop sidebar (md and up) ─────────────────────────────────── */}
       <aside
-        className="hidden md:flex flex-col shrink-0 transition-all duration-200"
+        className="sidebar hidden md:flex flex-col shrink-0 transition-all duration-200"
         style={{
-          width: collapsed ? "60px" : "220px",
+          width: collapsed ? "68px" : "240px",
           background: "var(--sidebar-bg)",
           borderRight: "1px solid var(--sidebar-border)",
         }}
       >
         {/* Logo */}
         <div
-          className="flex items-center gap-3 px-4 py-4 shrink-0"
+          className="flex items-center gap-3 px-4 py-5 shrink-0"
           style={{ borderBottom: "1px solid var(--sidebar-border)" }}
         >
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
             style={{ background: "var(--primary)" }}
           >
             <IconGradCap size={16} style={{ color: "#fff" }} strokeWidth={1.6} />
           </div>
           {!collapsed && (
-            <span className="text-sm font-bold tracking-tight" style={{ color: "var(--sidebar-fg)" }}>
-              INSync
-            </span>
+            <div>
+              <div className="text-sm font-bold tracking-tight" style={{ color: "var(--sidebar-fg)" }}>INSync</div>
+              <div className="text-[10px] mt-0.5 tracking-wide" style={{ color: "var(--sidebar-muted)" }}>INTERNSHIP PORTAL</div>
+            </div>
           )}
         </div>
 
         {/* User info */}
-        <div className="px-4 py-4 shrink-0" style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
+        <button type="button" aria-label="Open profile" aria-haspopup="dialog" aria-expanded={showProfile} onClick={() => setShowProfile(true)} className="px-4 py-4 shrink-0 text-left" style={{ borderBottom: "1px solid var(--sidebar-border)" }}>
           <div className="flex items-center gap-3">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
@@ -69,11 +74,12 @@ export default function Shell({
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <div className="text-xs font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>
+                <div className="text-xs font-semibold truncate" style={{ color: "var(--sidebar-fg)" }}>{userName}</div>
+                <div className="text-[10px] mt-0.5 truncate" style={{ color: "var(--sidebar-muted)" }}>
                   {userEmail}
                 </div>
                 <div
-                  className="text-xs mt-0.5 px-1.5 py-0.5 rounded inline-block"
+                  className="text-xs mt-2 px-2 py-1 rounded-md inline-block"
                   style={{ background: "var(--sidebar-active-bg)", color: "var(--sidebar-active-fg)", fontSize: "10px" }}
                 >
                   {userRole}
@@ -81,23 +87,24 @@ export default function Shell({
               </div>
             )}
           </div>
-        </div>
+        </button>
 
         {/* Nav */}
-        <nav className="flex-1 py-2 overflow-y-auto">
+        <nav aria-label="Main navigation" className="flex-1 px-2 py-3 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
                 title={collapsed ? item.label : undefined}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all text-left"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-all text-left"
                 style={{
                   background: isActive ? "var(--sidebar-active-bg)" : "transparent",
                   color: isActive ? "var(--sidebar-active-fg)" : "var(--sidebar-muted)",
-                  borderLeft: isActive ? "2px solid var(--primary)" : "2px solid transparent",
-                  fontWeight: isActive ? 500 : 400,
+                  fontWeight: isActive ? 600 : 500,
                 }}
               >
                 <span className="shrink-0 flex items-center">{item.icon}</span>
@@ -108,9 +115,11 @@ export default function Shell({
         </nav>
 
         {/* Footer */}
-        <div className="shrink-0 pb-2" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
+        <footer className="shrink-0 px-2 py-2" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
           <button
             onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
             title={collapsed ? "Expand" : "Collapse"}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-xs transition-all hover:opacity-80"
             style={{ color: "var(--sidebar-muted)" }}
@@ -121,6 +130,7 @@ export default function Shell({
             {!collapsed && <span>Collapse</span>}
           </button>
           <button
+            aria-label="Sign out"
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-xs transition-all hover:opacity-80"
             style={{ color: "var(--sidebar-muted)" }}
@@ -130,14 +140,14 @@ export default function Shell({
             </span>
             {!collapsed && <span>Sign Out</span>}
           </button>
-        </div>
+        </footer>
       </aside>
 
       {/* ── Right-hand column: mobile top bar + shared content + mobile bottom tabs ── */}
       <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
         {/* Mobile top bar (below md only) */}
         <header
-          className="md:hidden h-14 shrink-0 flex items-center justify-between px-4"
+          className="mobile-header md:hidden h-14 shrink-0 flex items-center justify-between px-4"
           style={{ background: "var(--sidebar-bg)", borderBottom: "1px solid var(--sidebar-border)" }}
         >
           <div className="flex items-center gap-2.5">
@@ -147,8 +157,11 @@ export default function Shell({
             <span className="text-sm font-bold tracking-tight" style={{ color: "var(--sidebar-fg)" }}>INSync</span>
           </div>
           <button
+            aria-label="Open profile"
+            aria-haspopup="dialog"
+            aria-expanded={showProfile}
             onClick={() => setShowProfile(true)}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
+            className="icon-button rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
             style={{ background: "var(--primary)", color: "#fff" }}
           >
             {initials}
@@ -156,14 +169,15 @@ export default function Shell({
         </header>
 
         {/* Content — single shared instance for both desktop and mobile */}
-        <main className="flex-1 overflow-y-auto" style={{ background: "var(--background)" }}>
+        <main id={mainId} tabIndex={-1} aria-label="Workspace" className="flex-1 min-h-0 overflow-y-auto" style={{ background: "var(--background)" }}>
           {children}
         </main>
 
         {/* Mobile bottom tab bar (below md only) */}
         <nav
-          className="md:hidden shrink-0 flex items-stretch"
-          style={{ background: "var(--sidebar-bg)", borderTop: "1px solid var(--sidebar-border)", height: "60px" }}
+          aria-label="Mobile navigation"
+          className="mobile-navigation md:hidden shrink-0 flex items-stretch"
+          style={{ background: "var(--sidebar-bg)", borderTop: "1px solid var(--sidebar-border)", minHeight: "60px" }}
         >
           {primaryTabs.map((item) => {
             const isActive = activeTab === item.id;
@@ -171,8 +185,10 @@ export default function Shell({
               <button
                 key={item.id}
                 onClick={() => { onTabChange(item.id); setShowMore(false); }}
-                className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors"
-                style={{ color: isActive ? "var(--primary)" : "var(--sidebar-muted)" }}
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
+                className="min-w-0 flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors"
+                style={{ color: isActive ? "var(--sidebar-active-fg)" : "var(--sidebar-muted)", background: isActive ? "var(--sidebar-active-bg)" : "transparent" }}
               >
                 <span className="flex items-center justify-center">{item.icon}</span>
                 <span className="text-[10px] leading-tight truncate max-w-full px-0.5" style={{ fontWeight: isActive ? 600 : 400 }}>
@@ -184,8 +200,11 @@ export default function Shell({
           {needsOverflow && (
             <button
               onClick={() => setShowMore(true)}
+              aria-haspopup="dialog"
+              aria-expanded={showMore}
+              aria-current={overflowHasActive ? "true" : undefined}
               className="flex-1 flex flex-col items-center justify-center gap-0.5"
-              style={{ color: overflowHasActive ? "var(--primary)" : "var(--sidebar-muted)" }}
+              style={{ color: overflowHasActive ? "var(--sidebar-active-fg)" : "var(--sidebar-muted)", background: overflowHasActive ? "var(--sidebar-active-bg)" : "transparent" }}
             >
               <span className="flex items-center justify-center"><IconGrid size={15} /></span>
               <span className="text-[10px] leading-tight" style={{ fontWeight: overflowHasActive ? 600 : 400 }}>More</span>
@@ -196,16 +215,7 @@ export default function Shell({
 
       {/* ── Mobile "More" sheet ──────────────────────────────────────────── */}
       {showMore && (
-        <div className="fixed inset-0 z-50 md:hidden flex items-end" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setShowMore(false)}>
-          <div
-            className="w-full rounded-t-2xl overflow-hidden"
-            style={{ background: "var(--card)", maxHeight: "70vh" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
-              <span className="text-sm font-semibold">More</span>
-              <button onClick={() => setShowMore(false)} className="text-lg" style={{ color: "var(--muted-foreground)" }}>×</button>
-            </div>
+        <Modal title="More navigation" onClose={() => setShowMore(false)}>
             <div className="overflow-y-auto py-2" style={{ maxHeight: "calc(70vh - 56px)" }}>
               {overflowTabs.map((item) => {
                 const isActive = activeTab === item.id;
@@ -213,6 +223,7 @@ export default function Shell({
                   <button
                     key={item.id}
                     onClick={() => { onTabChange(item.id); setShowMore(false); }}
+                    aria-current={isActive ? "page" : undefined}
                     className="w-full flex items-center gap-3 px-5 py-3 text-sm text-left"
                     style={{ background: isActive ? "var(--primary-light)" : "transparent", color: isActive ? "var(--primary)" : "var(--foreground)" }}
                   >
@@ -222,20 +233,19 @@ export default function Shell({
                 );
               })}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Mobile profile sheet ─────────────────────────────────────────── */}
       {showProfile && (
-        <div className="fixed inset-0 z-50 md:hidden flex items-end" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setShowProfile(false)}>
-          <div className="w-full rounded-t-2xl overflow-hidden" style={{ background: "var(--card)" }} onClick={(e) => e.stopPropagation()}>
+        <Modal title="Your profile" onClose={() => setShowProfile(false)}>
             <div className="px-5 pt-5 pb-4 flex items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0" style={{ background: "var(--primary)", color: "#fff" }}>
                 {initials}
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{userEmail}</div>
+                <div className="text-sm font-semibold break-words">{userName}</div>
+                <div className="text-sm break-all">{userEmail}</div>
                 <div className="text-xs mt-0.5 px-1.5 py-0.5 rounded inline-block" style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}>
                   {userRole}
                 </div>
@@ -249,8 +259,7 @@ export default function Shell({
               <IconLogOut size={15} />
               Sign Out
             </button>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

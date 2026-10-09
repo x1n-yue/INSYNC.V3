@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../src/App";
 
 const { auth, rpc, listeners } = vi.hoisted(() => ({
-  auth: { getSession: vi.fn(), onAuthStateChange: vi.fn(), signOut: vi.fn() },
+  auth: { getSession: vi.fn(), onAuthStateChange: vi.fn(), signOut: vi.fn(), updateUser: vi.fn() },
   rpc: vi.fn(),
   listeners: new Set(),
 }));
@@ -36,6 +36,7 @@ beforeEach(() => {
   });
   rpc.mockResolvedValue({ data: { id: session.user.id, role: "intern", status: "Active" }, error: null });
   auth.signOut.mockResolvedValue({ error: null });
+  window.history.replaceState(null,"","/");
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -180,4 +181,15 @@ it("lets a pending account recheck activation without signing out",async()=>{
   expect(button).toBeTruthy();
   await act(async()=>button.click());
   expect(container.textContent).toContain("Intern dashboard");
+});
+
+
+it("routes PASSWORD_RECOVERY to password entry before the role dashboard",async()=>{
+  await renderApp();await emit("PASSWORD_RECOVERY",session);
+  expect(container.textContent).toContain("Set a new password");expect(container.textContent).not.toContain("Intern dashboard");
+});
+it("shows recovery guidance for an expired callback without an authenticated session",async()=>{
+  window.history.replaceState(null,"","/?flow=recovery#error=access_denied&error_description=expired");
+  await renderApp();await emit("SIGNED_OUT",null);
+  expect(container.textContent).toContain("invalid, expired");expect(container.textContent).not.toContain("Intern dashboard");
 });

@@ -30,13 +30,13 @@ export default function DocumentActions({ doc }) {
       if (request === sequence.current) setError(failure.message || "File link unavailable; retry");
     } finally { if (request === sequence.current) setBusy(false); }
   };
-  return <div className="text-xs mt-2 space-y-1">
-    <div className="flex gap-2">
-      <button disabled={busy || !doc.file_path} onClick={() => prepare(false)} className="px-2 py-1 rounded border disabled:opacity-50">{busy ? "Preparing..." : "View file"}</button>
-      <button disabled={busy || !doc.file_path} onClick={() => prepare(true)} className="px-2 py-1 rounded border disabled:opacity-50">Download file</button>
+  return <div className="document-actions text-xs mt-2 space-y-1">
+    <div className="flex flex-wrap gap-2">
+      <button disabled={busy || !doc.file_path} onClick={() => prepare(false)} className="px-3 py-2 rounded-lg border disabled:opacity-50" style={{ borderColor: "var(--border)" }}>{busy ? "Preparing..." : "View file"}</button>
+      <button disabled={busy || !doc.file_path} onClick={() => prepare(true)} className="px-3 py-2 rounded-lg border disabled:opacity-50" style={{ borderColor: "var(--border)" }}>Download file</button>
     </div>
     {link && <p><a href={link.url} target="_blank" rel="noopener noreferrer" className="underline">{link.download ? "Download prepared file" : "Open prepared file"}</a> · Link expires in 60 seconds. Request a new link if access fails.</p>}
-    {error && <p role="alert">{error}</p>}
+    {error && <p role="alert" style={{ color: "var(--danger)" }}>{error}</p>}
     {doc.file_path && doc.upload_version === 0 && <p>Legacy evidence: resubmission required before approval or clearance.</p>}
   </div>;
 }

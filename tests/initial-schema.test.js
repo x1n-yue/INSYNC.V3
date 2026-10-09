@@ -14,7 +14,7 @@ async function providerFixture() {
 }
 
 describe("fresh Supabase initial schema", () => {
-  it("starts closed and seed-free, accepts M01-M14, and creates Pending interns", async () => {
+  it("starts closed and seed-free, accepts M01-M16, and creates Pending interns", async () => {
     const db = await providerFixture();
     try {
       await db.exec(sql("initial_schema.sql"));
@@ -26,9 +26,11 @@ describe("fresh Supabase initial schema", () => {
       }
       await expect(db.exec("insert into auth.users(id,email) values('00000000-0000-4000-8000-000000000001','test@example.invalid')"))
         .rejects.toThrow(/setup incomplete/);
-      for (const migration of ["M01_authority.sql", "M02_trusted_audit.sql", "M03_attendance_integrity.sql", "M04_private_documents_bucket.sql", "M05_validate_attendance.sql", "M06_rubric_hours.sql", "M07_account_lifecycle.sql", "M08_document_versions.sql", "M09_validate_domain.sql", "M10_master_data_lifecycle.sql", "M11_attendance_year_workflows.sql", "M12_section_announcements.sql", "M13_attendance_verification_precision.sql", "M14_last_active_admin.sql"]) {
+      for (const migration of ["M01_authority.sql", "M02_trusted_audit.sql", "M03_attendance_integrity.sql", "M04_private_documents_bucket.sql", "M05_validate_attendance.sql", "M06_rubric_hours.sql", "M07_account_lifecycle.sql", "M08_document_versions.sql", "M09_validate_domain.sql", "M10_master_data_lifecycle.sql", "M11_attendance_year_workflows.sql", "M12_section_announcements.sql", "M13_attendance_verification_precision.sql", "M14_last_active_admin.sql","M15_dashboard_metrics.sql"]) {
         await db.exec(sql(`migrations/${migration}`));
       }
+      await db.exec("create role service_role nologin bypassrls; grant usage on schema public to service_role");
+      await db.exec(sql("migrations/M16_admin_operations.sql"));
       await db.exec("insert into auth.users(id,email,raw_user_meta_data) values('00000000-0000-4000-8000-000000000001','test@example.invalid','{\"role\":\"admin\"}')");
       expect((await db.query("select role,status from public.profiles")).rows).toEqual([{ role: "intern", status: "Pending" }]);
       expect((await db.query("select count(*)::int n from public.interns")).rows[0].n).toBe(1);

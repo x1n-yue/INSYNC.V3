@@ -1,3 +1,7 @@
+> Historical record: this document describes an earlier release or task.
+> The current INSync.v3 scope is defined in [PROJECT_SCOPE.md](PROJECT_SCOPE.md).
+> Reporting/export, bulk-import, backup UI and certificate issuance are outside the current user-facing scope.
+
 # INSync Project Context Prompt
 
 Copy the prompt below into GPT Sol 6.1 Medium, or use it as the system/context prompt for an AI coding session in this repository.

@@ -1,5 +1,12 @@
 export const REQUEST_TIMEOUT_MS = 15000;
 
+// A traversal has one deadline; later pages cannot restart its time budget.
+export function remainingTime(deadline, maximum = REQUEST_TIMEOUT_MS) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("Operation timed out. Refresh before retrying.");
+  return Math.min(remaining, maximum);
+}
+
 export async function withTimeout(promise, message = "Request timed out. Refresh to check the latest state before retrying.", milliseconds = REQUEST_TIMEOUT_MS) {
   let timer;
   try {

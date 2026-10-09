@@ -1,3 +1,8 @@
+> Historical Phase 3 record. Download/import/backup UI checks below are superseded
+> by the focused scope cleanup. See [PROJECT_SCOPE.md](../../PROJECT_SCOPE.md) and
+> [tests/README.md](../../tests/README.md) for current scope and coverage.
+> Configuration, authentication and data-safety boundaries remain applicable.
+
 # Phase 3 verification: tooling and operational honesty
 
 No SQL, credentials, real Auth or Storage operations are used by these checks.

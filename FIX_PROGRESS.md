@@ -1,4 +1,75 @@
+# Figma reference UI implementation
+
+2026-10-09: applied the supplied design-reference presentation to existing screens:
+DM Sans, softer surfaces/borders, rounded desktop navigation with name/email/role,
+consistent cards/forms/dialogs and wrapping action buttons. Intern Dashboard keeps
+its existing weekly chart and actions beside each other on wide screens. Existing
+mobile navigation, compact dashboard content, chart periods, handlers and rules
+remain unchanged. No supplied demo logic or sample data was adopted.
+
+Lint and build passed. All 2,349 tests in 24 files passed with two workers;
+two default-concurrency attempts timed out during database/build/startup checks.
+Local Edge checks covered 45 role/page/viewport combinations, authentication and
+targeted interactions using isolated test data. Business modules, SQL, dependency
+manifests and reference files are unchanged. No migration or deployment occurred.
+See [FIGMA_UI_IMPLEMENTATION_REPORT.md](FIGMA_UI_IMPLEMENTATION_REPORT.md).
+
+# Previous GUI polishing
+
+2026-10-09: refined shared spacing, responsive controls/tables, input focus,
+navigation/profile semantics, dialogs, notifications, document action layout,
+evaluation presentation and authentication feedback. Intern Dashboard assignment
+details now collapse by default while retaining the onboarding warning. Dashboard
+and Attendance charts remain matched, with existing periods and totals.
+
+Lint/build passed; all 2,349 tests in 24 files passed. Local Edge checks covered
+45 role/page/viewport combinations, plus authentication and targeted interactions
+with isolated synthetic transports. SQL, src/lib and dependency manifests were
+unchanged. No live provider verification, migration or deployment occurred.
+See [GUI_POLISHING_REPORT.md](GUI_POLISHING_REPORT.md) for details and limits.
+
+The following dashboard/scope entries record their preceding verification runs.
+
+# Dashboard essentials follow-up
+
+Intern and Instructor dashboards now show basic information and essential status
+counts. The Intern dashboard includes a compact weekly logged/verified hours bar
+chart using existing Manila/assigned-year totals, with accessible daily values,
+explicit unavailable states and retry. Attendance uses the same chart component
+with its existing Weekly/Monthly/Yearly/All Time filters and server aggregation.
+Detailed intern supervision lives in My
+Interns; chart period controls stay in Attendance, evaluation history in
+Evaluations, and clearance in Documents.
+Announcements remain available with the Intern feed collapsed by default.
+Core workflows, role boundaries and SQL are unchanged. Lint/build passed, all
+2,346 tests across 24 files passed after matching both charts; the focused
+assignment/dashboard run passed 15 tests. No live provider/browser verification
+or deployment was performed.
+
+# Current scope cleanup ? INSync.v3
+
+2026-10-09: the official scope is Attendance Tracking, Intern Supervision and
+Performance Evaluation, supported by Document Passing. Reports/export, bulk-import
+UI, backup UI and certificates are removed from the user-facing scope. The core
+reader was preserved in src/lib/rows.js; existing rules, authentication/RLS and all
+SQL/history are retained. No migration or live database action was performed.
+
+See [PROJECT_SCOPE.md](PROJECT_SCOPE.md) and
+[SCOPE_SIMPLIFICATION_REPORT.md](SCOPE_SIMPLIFICATION_REPORT.md) for the current
+implementation and actual validation results. npm install, lint and build passed;
+the final npm test run passed all 2,335 tests in 24 files. Live provider/browser
+and production checks remain unverified.
+
+---
+
+The following is historical remediation progress. Its feature claims, file paths
+and test totals describe their original releases, not the current scope.
+
 # INSync remediation progress
+
+Historical baseline retained. The 2026-10-08 follow-up implementation and current
+R01-R14 status are in [FUNCTIONALITY_FIX_REPORT.md](FUNCTIONALITY_FIX_REPORT.md).
+Original findings and validation counts below describe their recorded release.
 
 Latest overall functionality audit: [SYSTEM_FUNCTIONALITY_AUDIT.md](SYSTEM_FUNCTIONALITY_AUDIT.md).
 It records the auth/draft and audit-page fixes, setup repair, M14 final-Admin guard,

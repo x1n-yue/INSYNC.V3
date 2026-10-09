@@ -44,3 +44,10 @@ unreconciled legacy approvals, audit provenance and bucket settings. This file i
 rehearsed only on disposable synthetic fixtures by the migration-gate tests;
 those tests never contact a real project. It contains SELECTs only. All real
 inspection and any proposed historical repair remain an operator task.
+
+`05_workflow_readiness.sql` covers M10-M15 indicators, M13's comparison definition,
+all domain/Auth trigger definitions, routine ownership/search paths/EXECUTE,
+RLS/policies/API grants, M15 indexes, private bucket settings, active-Admin and
+current-year counts. Run as an authorized owner, compare exact definitions with
+reviewed files, and record only missing migrations from actual evidence. Local
+synthetic rehearsal is not a live installation check. See the operations runbook.

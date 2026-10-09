@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { withTimeout } from "../lib/requests";
+import { requestAccountEmail } from "../lib/accountRecovery";
 import {
   IconGradCap,
   IconEye,
@@ -24,10 +25,11 @@ const roleOptions = [
   { value: "intern", label: "Intern / Student", desc: "Track hours & evaluations" },
 ];
 
-function InputField({ label, type, value, onChange, placeholder, icon, rightEl }) {
+function InputField({ label, type, value, onChange, placeholder, icon, rightEl, autoComplete, invalid, describedBy, required = false }) {
+  const id = useId();
   return (
     <div>
-      <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
+      <label htmlFor={id} className="block text-sm font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
         {label}
       </label>
       <div className="relative">
@@ -40,14 +42,19 @@ function InputField({ label, type, value, onChange, placeholder, icon, rightEl }
           </span>
         )}
         <input
+          id={id}
           type={type}
+          autoComplete={autoComplete}
+          aria-required={required || undefined}
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           className="w-full py-2.5 text-sm rounded-lg border outline-none transition-all"
           style={{
             paddingLeft: icon ? "36px" : "12px",
-            paddingRight: rightEl ? "40px" : "12px",
+            paddingRight: rightEl ? "56px" : "12px",
             borderColor: "var(--border)",
             background: "var(--card)",
             color: "var(--foreground)",
@@ -65,6 +72,16 @@ export default function LoginPage() {
   const [activeTab, setActiveTab] = useState("signin");
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [emailNotice, setEmailNotice] = useState("");
+  const emailRequest = useRef({ busy: false, next: 0 });
+  const sendAccountEmail = async kind => {
+    if (emailRequest.current.busy || submitting) return;
+    if (Date.now() < emailRequest.current.next) { setErrorMsg("Wait one minute before requesting another email."); return; }
+    emailRequest.current = { busy: true, next: Date.now() + 60000 }; setSubmitting(true); setErrorMsg(""); setEmailNotice("");
+    try { setEmailNotice(await requestAccountEmail(supabase, kind, email)); }
+    catch (error) { setErrorMsg(error.message); }
+    finally { emailRequest.current.busy = false; setSubmitting(false); }
+  };
 
   // Sign in state
   const [email, setEmail] = useState("");
@@ -145,8 +162,9 @@ export default function LoginPage() {
   const eyeBtn = (show, toggle) => (
     <button
       type="button"
+      aria-label={show ? "Hide password" : "Show password"}
       onClick={toggle}
-      className="transition-opacity hover:opacity-70"
+      className="icon-button flex items-center justify-center transition-opacity hover:opacity-70"
       style={{ color: "var(--muted-foreground)" }}
     >
       {show ? <IconEyeOff size={15} /> : <IconEye size={15} />}
@@ -154,8 +172,8 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10" style={{ background: "var(--background)" }}>
-      <div className="w-full max-w-md rounded-2xl shadow-sm overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+    <main className="auth-screen min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: "var(--background)" }}>
+      <div className="ui-card auth-card w-full max-w-md rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
         {/* Logo + title */}
         <div className="flex flex-col items-center pt-8 pb-5 px-8">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "var(--primary)" }}>
@@ -170,10 +188,11 @@ export default function LoginPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex mx-8" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="auth-tabs flex mx-8" style={{ borderBottom: "1px solid var(--border)" }}>
           {["signin", "register"].map((t) => (
             <button
               key={t}
+              aria-pressed={activeTab === t}
               onClick={() => {
                 setActiveTab(t);
                 setRegSuccess(false);
@@ -197,6 +216,8 @@ export default function LoginPage() {
             <InputField
               label="Email Address"
               type="email"
+              autoComplete="username"
+              required
               value={email}
               onChange={setEmail}
               placeholder="you@example.com"
@@ -205,6 +226,8 @@ export default function LoginPage() {
             <InputField
               label="Password"
               type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              required
               value={password}
               onChange={setPassword}
               placeholder="••••••••••"
@@ -213,7 +236,7 @@ export default function LoginPage() {
             />
 
             {errorMsg && (
-              <div
+              <div role="alert"
                 className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
                 style={{ background: "var(--danger-bg)", color: "var(--danger)" }}
               >
@@ -231,6 +254,12 @@ export default function LoginPage() {
               {submitting ? "Signing in…" : "Sign In"}
             </button>
 
+            <div className="flex flex-wrap gap-4 text-sm">
+              <button type="button" disabled={submitting || !email.trim()} onClick={() => sendAccountEmail("reset")} className="underline">Forgot password?</button>
+              <button type="button" disabled={submitting || !email.trim()} onClick={() => sendAccountEmail("confirm")} className="underline">Resend confirmation</button>
+            </div>
+            <p className="text-xs">Enter your email above to request a recovery or confirmation link.</p>
+            {emailNotice && <p role="status" className="text-sm">{emailNotice}</p>}
             {demoEnabled && <div>
               <p className="text-xs text-center mb-2.5" style={{ color: "var(--muted-foreground)" }}>
                 Disposable demo project only. Staff roles require trusted Admin approval.
@@ -263,6 +292,8 @@ export default function LoginPage() {
             <InputField
               label="Full Name"
               type="text"
+              autoComplete="name"
+              required
               value={regName}
               onChange={setRegName}
               placeholder="Maria Santos"
@@ -272,6 +303,8 @@ export default function LoginPage() {
             <InputField
               label="Email Address"
               type="email"
+              autoComplete="email"
+              required
               value={regEmail}
               onChange={setRegEmail}
               placeholder="you@institution.edu"
@@ -280,14 +313,15 @@ export default function LoginPage() {
 
             {/* Role selector */}
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
+              <p id="registration-role-label" className="block text-sm font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
                 Account request
-              </label>
-              <div className="grid grid-cols-1 gap-2">
+              </p>
+              <div role="group" aria-labelledby="registration-role-label" className="grid grid-cols-1 gap-2">
                 {roleOptions.map((r) => (
                   <button
                     key={r.value}
                     type="button"
+                    aria-pressed={regRole === r.value}
                     onClick={() => setRegRole(r.value)}
                     className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border text-left transition-all"
                     style={{
@@ -331,6 +365,7 @@ export default function LoginPage() {
               <InputField
                 label="Student ID"
                 type="text"
+                required
                 value={regId}
                 onChange={setRegId}
                 placeholder="1201010-I"
@@ -341,6 +376,8 @@ export default function LoginPage() {
             <InputField
               label="Password"
               type={showRegPassword ? "text" : "password"}
+              autoComplete="new-password"
+              required
               value={regPassword}
               onChange={setRegPassword}
               placeholder="Min. 8 characters"
@@ -352,6 +389,10 @@ export default function LoginPage() {
               <InputField
                 label="Confirm Password"
                 type={showRegConfirm ? "text" : "password"}
+                autoComplete="new-password"
+                required
+                invalid={regConfirm.length > 0 && !passwordMatch}
+                describedBy={regConfirm.length > 0 && !passwordMatch ? "password-match-error" : undefined}
                 value={regConfirm}
                 onChange={setRegConfirm}
                 placeholder="Re-enter password"
@@ -359,7 +400,7 @@ export default function LoginPage() {
                 rightEl={eyeBtn(showRegConfirm, () => setShowRegConfirm(!showRegConfirm))}
               />
               {regConfirm.length > 0 && !passwordMatch && (
-                <p className="text-xs mt-1" style={{ color: "var(--danger)" }}>
+                <p id="password-match-error" role="alert" className="text-xs mt-1" style={{ color: "var(--danger)" }}>
                   Passwords do not match
                 </p>
               )}
@@ -371,7 +412,7 @@ export default function LoginPage() {
             </div>
 
             {errorMsg && (
-              <div
+              <div role="alert"
                 className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
                 style={{ background: "var(--danger-bg)", color: "var(--danger)" }}
               >
@@ -430,6 +471,6 @@ export default function LoginPage() {
       <p className="text-xs mt-6" style={{ color: "var(--muted-foreground)" }}>
         © 2026 INSync. For authorized users only.
       </p>
-    </div>
+    </main>
   );
 }

@@ -2,18 +2,24 @@
 
 React 19 / Vite / Tailwind, Supabase Auth, Postgres and Storage. The browser
 uses public keys; effective authorization belongs to RLS and controlled RPCs.
-The latest workflow changes require M11/M12, the M13 verification fix, and the
-M14 final-Admin guard. See the current [system functionality audit](SYSTEM_FUNCTIONALITY_AUDIT.md)
-for confirmed fixes and remaining priorities, and
-[WORKFLOW_CHANGE_REPORT.md](WORKFLOW_CHANGE_REPORT.md) for changes and rollout.
-Remediation is in progress: see FIX_PROGRESS.md for all 39 findings and limits.
-The system is not described as secure or production-ready.
+INSync.v3 focuses on **Attendance Tracking, Intern Supervision and Performance
+Evaluation**, with **Document Passing** as a supporting feature. Authentication,
+assignments, academic years, master data, audit and announcements support these
+workflows. See [the official scope](PROJECT_SCOPE.md) and
+[the scope cleanup report](SCOPE_SIMPLIFICATION_REPORT.md) for changes and verification.
+Earlier audit and functionality reports are retained as historical records.
+Live provider/browser verification remains a separate release step.
+The [GUI polishing report](GUI_POLISHING_REPORT.md) records the latest visual,
+responsive and accessibility refinements, local browser checks and their limits.
+The [reference UI implementation report](FIGMA_UI_IMPLEMENTATION_REPORT.md)
+describes the styling adapted from the supplied Figma code in `design-reference`.
 
 ## Local setup
 
 For browser setup, the exact fresh Supabase SQL order, and first-Admin creation,
 see [WEB_SETUP.md](WEB_SETUP.md). New empty projects start with the seed-free
-[initial_schema.sql](supabase/initial_schema.sql), then M01-M14; existing projects
+[initial_schema.sql](supabase/initial_schema.sql), then the structural M01-M15 migrations (M16 is optional legacy operator
+infrastructure); existing projects
 must use the inspection/upgrade runbook instead.
 
 Use Node **22.12.0 or later** (supported test lines: 22 and 24), npm and the
@@ -32,7 +38,7 @@ settings. All VITE_ values are public build inputs. Missing/malformed settings
 render a setup screen without constructing a Supabase client; the guard validates
 format, not key authenticity, project connectivity or RLS. Invalid real public
 keys, unavailable services and expired sessions still require backend error
-handling; remaining authentication/reliability work is tracked in Phase 5.
+handling; see the scope cleanup report for local evidence and remaining live checks.
 See [Supabase key guidance](https://supabase.com/docs/guides/getting-started/api-keys).
 
 Development and preview bind to 127.0.0.1 by default. Do not expose a dev server
@@ -55,7 +61,7 @@ record hashes, verify the catalog and coordinate client deployment. This session
 never applies SQL to a real project. A genuinely new deployment needs an operator-
 reviewed initial schema without demo seeds plus the reviewed migrations; the
 legacy bootstrap alone is insufficient. `supabase/initial_schema.sql` supplies
-that seed-free starting catalog for new empty projects; it still requires M01-M14
+that seed-free starting catalog for new empty projects; it still requires the structural M01-M15 migrations
 and disposable live checks. No live bootstrap/seed is automated.
 
 Public registration always requests intern and creates intern/Pending. Pending
@@ -83,24 +89,28 @@ View/Download prepares a signed link lasting 60 seconds; actual provider deliver
 and deletion of file bytes still require disposable live verification. Interns
 receive UUID-addressed personal and roster announcements with explicit feed states.
 
-## Downloads and unavailable features
+## Focused workflows
 
-Admin can download blank student/instructor planning templates as CSV or XLSX,
-and an audit CSV. Intern can export all their own DTR records as informational CSV,
-independent of screen period filters. Exports fetch fresh RLS-scoped pages, check
-counts and identities and stop on detected changes/errors. Limit: 50,000 records;
-these reads are not a transactional snapshot. Legacy audit events are labeled
-unverified. DTR separates raw stored, valid logged and verified hours; legacy or
-invalid evidence remains unknown, with no invented totals or certification.
-CSV cells are escaped against spreadsheet formulas. Download dispatch does not
-prove a file was saved. XLSX writer loads only when requested. The application
-does not issue or expose a Certificate of Completion feature.
+- Interns: essential dashboard with assignment, today's attendance, hours/progress,
+  latest score, a compact weekly logged/verified hours chart and document status;
+  matching bar charts with period filters in attendance/history and
+  corrections, required documents, and performance evaluations.
+- Instructors: essential dashboard with roster totals and pending-action counts,
+  detailed supervision in My Interns with year/section
+  filters, attendance verification and corrections, evaluations, documents and announcements.
+- Admins: intern/attendance/evaluation/document overview, assignments and checklists,
+  account approval, master data and paginated audit history.
 
-Bulk import (including file selection/drag-drop) remains disabled: templates only
-help plan records and do not provision accounts. Instructor reports and intern PDF/Excel summaries/archives remain unavailable.
-There is no Certificate of Completion feature; completion/clearance status remains
-available without implying certificate issuance. Manual backups remain unavailable. Uptime monitoring is not connected. Verify real backup availability,
-retention and restoration in the provider console; this UI cannot claim a backup.
+There are no Reports, CSV/Excel downloads, document ZIP archives, bulk-import,
+backup or Certificate of Completion controls. Individual authorized document
+View/Download links remain part of document passing. Clearance is a supporting
+outcome under the existing rules; evaluation scores remain informational.
+
+Existing server-only administration jobs and operator recovery scripts remain
+for operational continuity and historical evidence. They have no application UI
+and are not required by the focused browser workflows. Provider backups, file
+recovery and restoration remain the operator's responsibility. No database
+structures or historical records were removed.
 
 VITE_DEMO_MODE defaults to false. Demo shortcuts exist only when explicitly true
 in development and are removed from production even if set true at build time.
@@ -136,3 +146,21 @@ Its default browser baseline is Chrome/Edge 107, Firefox 104 and Safari 16;
 verify the actual target devices separately. ESLint 9 is retained for the React
 plugin's declared compatibility; its unsupported-major notice is a tooling risk,
 separate from npm security advisories. Large dashboard chunks remain Phase 6.
+
+## Functionality release checks
+
+Run `npm run verify:release` for tests, lint, build, dependency audit and Git whitespace
+checks. Run `node scripts/migration-manifest.mjs` to print reviewed local migration
+hashes; this executes no SQL. This cleanup adds no migration. Core browser workflows require the existing
+structural migrations through M15. M16 is retained for preexisting server-only
+operational jobs; it is not a new requirement of the focused UI. Other projects must inspect their ledger/catalog and apply only
+missing prerequisites. No live installation was inferred or modified.
+
+Forgot-password and confirmation resend require the Auth Site URL, exact allowed
+callback URLs and email delivery settings described in WEB_SETUP.md. The focused browser app needs only the public settings above. Existing operator
+recovery tooling is documented in the historical deployment report; its private
+settings must never be browser build inputs. The root error boundary, bounded operations
+and account-scoped announcement retry cache are local implementations; live delivery
+and real browser/device checks remain separate. See
+[operations](supabase/OPERATIONS_RUNBOOK.md) and
+[policy decisions](FUNCTIONALITY_PRODUCT_DECISIONS.md).

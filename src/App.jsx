@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { supabase, setupError } from "./lib/supabaseClient";
 import LoginPage from "./components/LoginPage";
 import { withTimeout } from "./lib/requests";
+import RecoverPassword from "./components/RecoverPassword";
+import { clearUnsentAnnouncementDrafts } from "./lib/announcementDraft";
 
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const InstructorDashboard = lazy(() => import("./components/InstructorDashboard"));
@@ -36,6 +38,8 @@ function ConfiguredApp() {
   const [logoutError, setLogoutError] = useState(null);
   const profileRequest = useRef(0);
   const authGeneration = useRef(0);
+  const [recoveryMode, setRecoveryMode] = useState(() => new URLSearchParams(window.location.search).get("flow") === "recovery" || new URLSearchParams(window.location.hash.slice(1)).get("type") === "recovery");
+  const [recoveryLinkError] = useState(() => new URLSearchParams(window.location.hash.slice(1)).has("error") || new URLSearchParams(window.location.search).has("error"));
 
   const loadProfile = async (currentSession) => {
     const requestId = ++profileRequest.current;
@@ -93,6 +97,7 @@ function ConfiguredApp() {
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!alive) return;
+      if (_event === "PASSWORD_RECOVERY") setRecoveryMode(true);
       authGeneration.current += 1;
       clearTimeout(restoreTimeout);
       setAuthError(null);
@@ -101,6 +106,7 @@ function ConfiguredApp() {
       setAuthReady(true);
       setLogoutError(null);
       if (!newSession) {
+        clearUnsentAnnouncementDrafts();
         profileRequest.current += 1;
         setProfile(null);
         setProfileLoading(false);
@@ -126,6 +132,7 @@ function ConfiguredApp() {
       const { error } = await withTimeout(supabase.auth.signOut(), "Sign out timed out. Retry or close this session securely.");
       if (error) throw error;
       profileRequest.current += 1;
+      clearUnsentAnnouncementDrafts();
       authGeneration.current += 1;
       setSession(null);
       setProfile(null);
@@ -137,9 +144,17 @@ function ConfiguredApp() {
   if (!authReady) {
     return <CenteredState title="Restoring session" message="Checking your signed-in session and preparing your INSync profile…" />;
   }
+  if (recoveryMode || recoveryLinkError) return <RecoverPassword session={session} linkError={recoveryLinkError || Boolean(authError)} onDone={() => {
+    const url = new URL(window.location.href); url.searchParams.delete("flow"); url.searchParams.delete("error"); url.searchParams.delete("error_description"); url.hash = "";
+    window.history.replaceState(null, "", url.pathname + url.search);
+    setRecoveryMode(false);
+    // Clear invalid callback state by navigating explicitly, never an automatic loop.
+    if (recoveryLinkError) window.location.reload();
+  }} />;
   if (authError) {
     return <CenteredState title="Session restoration failed" message={authError} error action={<div className="flex gap-2"><button onClick={() => { setAuthReady(false); setAuthError(null); setRestoreAttempt((attempt) => attempt + 1); }} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: "var(--primary)", color: "#fff" }}>Retry</button><button onClick={() => window.location.reload()} className="px-4 py-2 rounded-lg text-sm" style={{ background: "var(--secondary)", color: "var(--foreground)" }}>Reload</button></div>} />;
   }
+
   if (!session) return <LoginPage />;
   // Rechecking the same user must keep mounted forms and unsaved drafts.
   // A different account never inherits the previous account's dashboard.

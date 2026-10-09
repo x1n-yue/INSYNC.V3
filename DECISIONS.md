@@ -1,3 +1,7 @@
+> Current scope: [PROJECT_SCOPE.md](PROJECT_SCOPE.md). Existing core business and
+> security decisions still apply. D28-D30 are historical export/import decisions;
+> those controls and artifact generators have been removed, rather than disabled.
+
 # Remediation decisions
 
 Phases 0-4, 2026-10-07. These are conservative **assumed defaults**, not confirmed

@@ -43,26 +43,26 @@ export default function Modal({ title, onClose, children, width = "460px" }) {
     >
       <div
         ref={dialogRef}
-        className="w-full rounded-2xl shadow-xl overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col"
+        className="modal-panel w-full rounded-2xl shadow-xl overflow-hidden flex flex-col"
         style={{ maxWidth: width, background: "var(--card)", border: "1px solid var(--border)" }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
       >
-        <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="modal-heading flex items-center justify-between gap-3 px-5 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
           <h2 id={titleId} className="text-sm font-semibold">{title}</h2>
           <button
             type="button"
             aria-label="Close dialog"
             onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-lg transition-opacity hover:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="icon-button shrink-0 rounded-lg flex items-center justify-center text-lg transition-opacity hover:opacity-60"
             style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}
           >
             ×
           </button>
         </div>
-        <div className="px-5 py-5 overflow-y-auto">{children}</div>
+        <div className="modal-body px-5 py-5 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

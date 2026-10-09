@@ -12,14 +12,14 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run --config vitest.config.js",
-    "test:watch": "vitest --config vitest.config.js"
+    "test:watch": "vitest --config vitest.config.js",
+    "verify:release": "node scripts/release-check.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^3.10.1",
-    "write-excel-file": "4.1.1"
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
@@ -31,7 +31,6 @@
     "eslint": "9.39.5",
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
-    "fflate": "0.8.3",
     "globals": "17.13.0",
     "jsdom": "26.1.0",
     "pg": "8.23.1",

@@ -1,4 +1,5 @@
 import { recordRpc } from "./authority";
+import { withTimeout } from "./requests";
 
 export const DOCUMENT_LIMIT = 10 * 1024 * 1024;
 const MIMES = ["application/pdf", "image/jpeg", "image/png"];
@@ -16,7 +17,7 @@ export async function recoverUpload(client, uploadId) {
   if (outcome.data.committed === true && outcome.data.document?.id) return { ok: true, data: outcome.data.document, reconciled: true };
   if (outcome.data.committed !== false || !outcome.data.path) return { ok: false, cleanupPending: true, error: "Incomplete recovery response; retry recovery" };
   try {
-    const { data, error } = await client.storage.from("documents").remove([outcome.data.path]);
+    const { data, error } = await withTimeout(client.storage.from("documents").remove([outcome.data.path]), "Cleanup timed out; retry recovery to reconcile the object.");
     if (error || !Array.isArray(data) || !(data.length === 1 || (data.length === 0 && outcome.data.object_exists === false))) return { ok: false, cleanupPending: true, error: error?.message || "Cleanup not confirmed; retry recovery" };
     return { ok: false, data: null, cleanupPending: false, error: "Upload was not finalized; staged object removed" };
   } catch (error) { return { ok: false, cleanupPending: true, error: `Cleanup pending: ${error.message}` }; }
@@ -31,7 +32,7 @@ export async function uploadDocument(client, doc, file) {
   if (!upload?.id || !upload.file_path?.startsWith(`${doc.intern_id}/`) || upload.document_id !== doc.id) return { ok: false, cleanupPending: true, error: "Invalid upload reservation; refresh before retrying" };
   let failure;
   try {
-    const { error: storageError } = await client.storage.from("documents").upload(upload.file_path, file, { upsert: false, contentType: file.type });
+    const { error: storageError } = await withTimeout(client.storage.from("documents").upload(upload.file_path, file, { upsert: false, contentType: file.type }), "Upload timed out; checking the reservation before retrying.", 60000);
     if (storageError) throw new Error(storageError.message);
     const result = await recordRpc(client, "finalize_document_upload", { p_upload_id: upload.id });
     if (result.ok && result.data.id === doc.id) return result;
@@ -44,8 +45,8 @@ export async function documentLink(client, doc, download = false) {
   const access = await recordRpc(client, "document_access", { p_id: doc.id, p_expected_version: doc.upload_version, p_expected_revision: doc.review_revision });
   if (!access.ok) return access;
   try {
-    const { data, error } = await client.storage.from("documents").createSignedUrl(access.data.file_path, 60,
-      download ? { download: access.data.file_name || "document" } : {});
+    const { data, error } = await withTimeout(client.storage.from("documents").createSignedUrl(access.data.file_path, 60,
+      download ? { download: access.data.file_name || "document" } : {}), "File link preparation timed out; retry.");
     if (error) throw new Error(error.message);
     const url = new URL(data?.signedUrl);
     if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) throw new Error("Invalid file link");

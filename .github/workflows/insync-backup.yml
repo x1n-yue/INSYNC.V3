@@ -1,0 +1,71 @@
+name: INSync encrypted manual backup
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Durable Admin backup job UUID
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: insync-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: insync-backup
+    env:
+      BACKUP_JOB_ID: ${{ inputs.job_id }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Install a client matching the project's Postgres major (17 by default).
+      - uses: docker://postgres:17
+        with:
+          entrypoint: /bin/true
+      - name: Prepare pg_dump wrapper
+        run: |
+          mkdir -p "$RUNNER_TEMP/insync-bin"
+          cat > "$RUNNER_TEMP/insync-bin/pg_dump" <<'SCRIPT'
+          #!/bin/sh
+          exec docker run --rm --network host -e PGDATABASE -v "$TMPDIR:$TMPDIR" postgres:17 pg_dump "$@"
+          SCRIPT
+          chmod +x "$RUNNER_TEMP/insync-bin/pg_dump"
+          echo "$RUNNER_TEMP/insync-bin" >> "$GITHUB_PATH"
+        env:
+          TMPDIR: ${{ runner.temp }}
+      - name: Prepare encrypted database and files
+        id: prepare
+        run: node scripts/backup-worker.mjs
+        env:
+          TMPDIR: ${{ runner.temp }}
+      - uses: actions/upload-artifact@v4
+        id: artifact
+        if: steps.prepare.outputs.claimed == 'true'
+        with:
+          name: insync-${{ inputs.job_id }}
+          path: backup-output/*.enc
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Record confirmed artifact delivery
+        if: steps.prepare.outputs.claimed == 'true'
+        run: node scripts/backup-worker.mjs
+        env:
+          BACKUP_FINALIZE: 'true'
+          BACKUP_ARTIFACT_ID: ${{ steps.artifact.outputs.artifact-id }}
+      - name: Record failure without discarding evidence
+        if: failure()
+        run: node scripts/backup-worker.mjs
+        env:
+          BACKUP_FAILED: 'true'

@@ -1,3 +1,7 @@
+> Historical record: this document describes an earlier release or task.
+> The current INSync.v3 scope is defined in [PROJECT_SCOPE.md](PROJECT_SCOPE.md).
+> Reporting/export, bulk-import, backup UI and certificate issuance are outside the current user-facing scope.
+
 # INSync Focused Remediation Report
 
 Date: 2026-10-08

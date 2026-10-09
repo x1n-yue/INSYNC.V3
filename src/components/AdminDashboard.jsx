@@ -1,41 +1,40 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { auditArtifact, downloadArtifact, templateArtifact } from "../lib/exports";
 import { recordRpc } from "../lib/authority";
 import { checklistState } from "../lib/business";
 import { displayHours, internMetrics } from "../lib/metrics";
 import { completeRows, saveAssignment } from "../lib/workflows";
 import Shell from "./Shell";
+import { auditChanges, auditScope, auditTables } from "../lib/audit";
+import { dashboardMetrics, detailPage } from "../lib/dashboard";
 import Modal from "./Modal";
 import RefreshStatus from "./RefreshStatus";
-import { academicRows, onboardingItems } from "../lib/assignments";
-import { captureRequest, withTimeout } from "../lib/requests";
+import { onboardingItems } from "../lib/assignments";
+import { captureRequest } from "../lib/requests";
 import { useToast } from "./Toast";
 import {
-  IconGrid, IconUsers, IconFolder, IconUpload, IconClipboard, IconShield,
-  IconGradCap, IconBuilding, IconCheck,
+  IconGrid, IconUsers, IconFolder, IconClipboard,
+  IconGradCap, IconClock, IconCheck,
 } from "./Icons";
 
 const navItems = [
   { id: "overview", label: "Overview", icon: <IconGrid size={15} /> },
-  { id: "accounts", label: "Account Management", icon: <IconUsers size={15} /> },
   { id: "interns", label: "Interns", icon: <IconGradCap size={15} /> },
+  { id: "accounts", label: "Account Management", icon: <IconUsers size={15} /> },
   { id: "masterdata", label: "Master Data", icon: <IconFolder size={15} /> },
-  { id: "import", label: "Bulk Import", icon: <IconUpload size={15} /> },
   { id: "auditlogs", label: "Audit Logs", icon: <IconClipboard size={15} /> },
-  { id: "backup", label: "Backup & Security", icon: <IconShield size={15} /> },
 ];
 
 const roleLabel = { admin: "Admin", instructor: "Instructor", intern: "Intern" };
-const roleColors = { Intern: "#d97706", Instructor: "#7c3aed", Admin: "#1a2f5e" };
+const roleColors = { Intern: "#92400e", Instructor: "#7c3aed", Admin: "#1a2f5e" };
 const roles = ["Intern", "Instructor", "Admin"];
 
 function Field({ label, children }) {
   return (
-    <div>
-      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--muted-foreground)" }}>{label}</label>
+    <label className="block">
+      <span className="block text-xs font-medium mb-1.5" style={{ color: "var(--muted-foreground)" }}>{label}</span>
       {children}
-    </div>
+    </label>
   );
 }
 
@@ -55,6 +54,7 @@ export default function AdminDashboard({ profile, onLogout }) {
   const [sections, setSections] = useState([]);
   const [years, setYears] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [resourceErrors, setResourceErrors] = useState({});
   const loadSequence = useRef(0);
@@ -63,6 +63,8 @@ export default function AdminDashboard({ profile, onLogout }) {
   const auditSequence = useRef(0);
   const [auditCount, setAuditCount] = useState(null);
   const AUDIT_PAGE_SIZE = 50;
+  const [auditFilters, setAuditFilters] = useState({});
+  const [auditFilterDraft, setAuditFilterDraft] = useState({ actor: "", table: "", start: "", end: "" });
 
   // User modal
   const [userModal, setUserModal] = useState({ open: false, editing: null });
@@ -73,8 +75,8 @@ export default function AdminDashboard({ profile, onLogout }) {
   const [internRows, setInternRows] = useState([]);
   const [internForms, setInternForms] = useState({});
   const [docCounts, setDocCounts] = useState({});
-  const [metricAttendance, setMetricAttendance] = useState(null);
-  const [metricDocuments, setMetricDocuments] = useState(null);
+  const [serverMetrics, setServerMetrics] = useState({});
+  const dirtyInterns = useRef(new Set());
   const [metricsError, setMetricsError] = useState(null);
   const [accountBusy, setAccountBusy] = useState(false);
   const [savingInternId, setSavingInternId] = useState(null);
@@ -84,33 +86,15 @@ export default function AdminDashboard({ profile, onLogout }) {
   const [masterModal, setMasterModal] = useState(null);
   const [masterBusy, setMasterBusy] = useState(false);
 
-  const [exportBusy, setExportBusy] = useState(false);
-  const requestExport = async (createArtifact) => {
-    if (exportBusy) return;
-    setExportBusy(true);
-    try {
-      const artifact = await createArtifact();
-      downloadArtifact(artifact);
-      toast(`Download requested: ${artifact.filename}`, "info");
-    } catch (error) { toast(error.message || "Export failed; retry", "error"); }
-    finally { setExportBusy(false); }
-  };
-
-  const loadAuditPage = async (page = auditPage) => {
+  const loadAuditPage = async (page = auditPage, filters = auditFilters) => {
     const request = ++auditSequence.current;
     setAuditLoading(true);
-    const from = page * AUDIT_PAGE_SIZE;
     try {
-      const { data, error, count } = await withTimeout(supabase.from("audit_logs")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, from + AUDIT_PAGE_SIZE - 1));
+      const { data, count } = await detailPage(supabase, "audit_logs", { page, filter: auditScope(filters) });
       if (request !== auditSequence.current) return;
-      if (error) throw error;
       setLogs(data ?? []);
       setAuditCount(count ?? null);
-      setAuditPage(page);
+      setAuditPage(page); setAuditFilters(filters);
       setResourceErrors(prev => ({ ...prev, audit: undefined }));
     } catch (error) {
       if (request === auditSequence.current) throw error;
@@ -130,15 +114,14 @@ export default function AdminDashboard({ profile, onLogout }) {
     setLoading(true);
     const capture = captureRequest;
     try {
-      const [profilesResult, auditResult, companyResult, sectionResult, yearResult, internsResult, docsResult, attendanceResult] = await Promise.all([
+      const [profilesResult, auditResult, companyResult, sectionResult, yearResult, internsResult, metricsResult] = await Promise.all([
         capture(completeRows(supabase, "profiles").then(data => ({ data }))),
-        capture(supabase.from("audit_logs").select("*", { count: "exact" }).order("created_at", { ascending: false }).order("id", { ascending: false }).range(auditPage * AUDIT_PAGE_SIZE, (auditPage + 1) * AUDIT_PAGE_SIZE - 1)),
-        capture(supabase.from("companies").select("*").order("name")),
-        capture(supabase.from("course_sections").select("*").order("name")),
-        capture(supabase.from("academic_years").select("*").order("label", { ascending: false })),
+        capture(tab === "auditlogs" ? detailPage(supabase, "audit_logs", { page: auditPage, filter: auditScope(auditFilters) }) : Promise.resolve({ data: logs, count: auditCount })),
+        capture(completeRows(supabase, "companies").then(data => ({ data }))),
+        capture(completeRows(supabase, "course_sections").then(data => ({ data }))),
+        capture(completeRows(supabase, "academic_years").then(data => ({ data }))),
         capture(completeRows(supabase, "interns").then(data => ({ data }))),
-        capture(completeRows(supabase, "documents").then(data => ({ data }))),
-        capture(completeRows(supabase, "attendance_logs").then(data => ({ data }))),
+        capture(dashboardMetrics(supabase, profile.id).then(data => ({ data }))),
       ]);
       if (sequence !== loadSequence.current) return;
       const errors = {};
@@ -152,29 +135,24 @@ export default function AdminDashboard({ profile, onLogout }) {
       assign("years", yearResult, data => setYears(data ?? []));
       assign("interns", internsResult, data => {
         setInternRows(data ?? []);
-        setInternForms(Object.fromEntries((data ?? []).map(r => [r.id, { instructor_id: r.instructor_id ?? "", company_id: r.company_id ?? "", section_id: r.section_id ?? "", academic_year_id: r.academic_year_id ?? "", required_hours: r.required_hours ?? "" }])));
+        setInternForms(prev => Object.fromEntries((data ?? []).map(r => [r.id, dirtyInterns.current.has(r.id) ? prev[r.id] : { instructor_id: r.instructor_id ?? "", company_id: r.company_id ?? "", section_id: r.section_id ?? "", academic_year_id: r.academic_year_id ?? "", required_hours: r.required_hours ?? "" }])));
       });
-      assign("documents", docsResult, data => setMetricDocuments(data));
-      assign("attendance", attendanceResult, data => setMetricAttendance(data));
+      assign("metrics", metricsResult, data => setServerMetrics(Object.fromEntries(data.map(row => [row.id,row]))));
       if (auditRequest === auditSequence.current) {
         if (auditResult?.error) errors.audit = auditResult.error.message || String(auditResult.error);
         else { setLogs(auditResult.data ?? []); setAuditCount(auditResult.count ?? null); }
       }
       setResourceErrors(errors);
       if (!Object.values(errors).some(Boolean)) setLastUpdated(new Date());
-      setMetricsError(errors.profiles || errors.interns || errors.documents || errors.attendance || null);
-      if (!errors.documents && !errors.interns) {
-        const counts = {};
-        (internsResult.data ?? []).forEach(r => { counts[r.id] = checklistState(academicRows((docsResult.data ?? []).filter(d => d.intern_id === r.id), r.academic_year_id)); });
-        setDocCounts(counts);
-      }
+      setMetricsError(errors.profiles || errors.interns || errors.metrics || null);
+      if (!errors.metrics) setDocCounts(Object.fromEntries(metricsResult.data.map(row => [row.id,row.metric.checklist])));
     } catch (error) {
       if (sequence === loadSequence.current) {
         setResourceErrors(prev => ({ ...prev, dashboard: error.message || "Dashboard refresh failed" }));
         setMetricsError(error.message || "Dashboard refresh failed");
       }
     } finally {
-      if (sequence === loadSequence.current) setLoading(false);
+      if (sequence === loadSequence.current) { setHasLoaded(true); setLoading(false); }
     }
   };
   useEffect(() => {
@@ -182,6 +160,12 @@ export default function AdminDashboard({ profile, onLogout }) {
     // Initial load only; subsequent refreshes and page changes are explicit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (tab === "auditlogs") changeAuditPage(auditPage);
+    // Navigation loads the selected page; form submission applies filters explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const filtered = users.filter(
     (u) =>
@@ -203,14 +187,16 @@ export default function AdminDashboard({ profile, onLogout }) {
     .filter(Boolean)
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
-  const updateInternForm = (internId, field, value) =>
+  const updateInternForm = (internId, field, value) => {
+    dirtyInterns.current.add(internId);
     setInternForms((prev) => ({ ...prev, [internId]: { ...prev[internId], [field]: value } }));
+  };
 
   const applyIntern = (row) => {
     if (!row) return;
     setInternRows(prev => prev.some(r => r.id === row.id) ? prev.map(r => r.id === row.id ? row : r) : [...prev, row]);
     setInternForms(prev => ({ ...prev, [row.id]: { instructor_id: row.instructor_id ?? "", company_id: row.company_id ?? "", section_id: row.section_id ?? "", academic_year_id: row.academic_year_id ?? "", required_hours: row.required_hours ?? "" } }));
-    setDocCounts(prev => ({ ...prev, [row.id]: checklistState(academicRows(metricDocuments?.filter(d => d.intern_id === row.id), row.academic_year_id)) }));
+    dirtyInterns.current.delete(row.id);
   };
   const saveInternAssignment = async (internId) => {
     if (savingInternId || !internForms[internId]) return;
@@ -219,7 +205,7 @@ export default function AdminDashboard({ profile, onLogout }) {
       const result = await saveAssignment(supabase, internId, internForms[internId]);
       if (!result.ok) { toast(result.error, "error"); return result; }
       applyIntern(result.data);
-      await refreshAudit(); toast("Assignment saved", "success");
+      await loadAll(); toast("Assignment saved", "success");
       return result;
     } finally { setSavingInternId(null); }
   };
@@ -229,9 +215,7 @@ export default function AdminDashboard({ profile, onLogout }) {
     try {
       const result = await recordRpc(supabase, "attach_standard_docs", { p_id: internId });
       if (!result.ok) return toast(result.error, "error");
-      setDocCounts(prev => ({ ...prev, [internId]: checklistState(academicRows(result.data.documents, internRows.find(r => r.id === internId)?.academic_year_id)) }));
-      setMetricDocuments(prev => prev ? [...prev.filter(d => d.intern_id !== internId), ...result.data.documents] : null);
-      await refreshAudit(); toast("Missing standard requirements attached", "success");
+      await loadAll(); toast("Missing standard requirements attached", "success");
     } finally { setAttachingDocsId(null); }
   };
 
@@ -371,20 +355,20 @@ export default function AdminDashboard({ profile, onLogout }) {
 
 
   const stats = [
-    { label: "Total Users", value: `${users.length}`, sub: `${users.filter((u) => u.status === "Active").length} active`, icon: <IconUsers size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb" },
-    { label: "Active Interns", value: `${users.filter((u) => u.role === "intern" && u.status === "Active").length}`, sub: "Live count", icon: <IconGradCap size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
-    { label: "Companies", value: `${companies.length}`, sub: "In directory", icon: <IconBuilding size={18} />, iconBg: "#fefce8", iconColor: "#d97706" },
-    { label: "System Uptime", value: "Unavailable", sub: "Monitoring not connected", icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
+    { label: "Clocked In", value: metricsError || Object.values(serverMetrics).some(row => row.clockedIn == null) ? "Unavailable" : `${Object.values(serverMetrics).filter(row => row.clockedIn).length}`, sub: "At last refresh", icon: <IconClock size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb" },
+    { label: "Active Interns", value: `${users.filter((u) => u.role === "intern" && u.status === "Active").length}`, sub: "At last refresh", icon: <IconGradCap size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
+    { label: "Unassigned Interns", value: metricsError ? "Unavailable" : `${internsForTab.filter(intern => !intern.instructor_id).length}`, sub: "Need an instructor", icon: <IconGradCap size={18} />, iconBg: "#fefce8", iconColor: "#d97706" },
+    { label: "Pending Accounts", value: `${users.filter(user => user.status === "Pending").length}`, sub: "Awaiting approval", icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
   ];
 
   return (
     <>
       <Shell userName={profile.full_name} userEmail={profile.email} userRole="Administrator"
         navItems={navItems} activeTab={tab} onTabChange={setTab} onLogout={onLogout}>
-        <div className="p-6 max-w-6xl mx-auto space-y-5">
+        <div className="workspace space-y-5">
           <RefreshStatus loading={loading || auditLoading || Boolean(savingInternId) || accountBusy || masterBusy || Boolean(attachingDocsId)} lastUpdated={lastUpdated} onRefresh={loadAll} />
           {Object.keys(resourceErrors).some((key) => resourceErrors[key]) && <div role="alert" className="rounded-lg px-4 py-3 text-sm flex flex-wrap items-center gap-3" style={{ background: "var(--warning-bg)", color: "var(--foreground)", border: "1px solid var(--warning)" }}><span>Some data could not be refreshed. Existing values may be stale.</span><button onClick={loadAll} className="font-semibold underline">Retry refresh</button></div>}
-          <div className="flex items-start justify-between">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold">{tab === "overview" ? `Hi, ${profile.full_name.split(" ")[0]}!` : navItems.find((n) => n.id === tab)?.label}</h1>
               <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
@@ -399,11 +383,11 @@ export default function AdminDashboard({ profile, onLogout }) {
           {loading && <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>Loading…</div>}
 
           {/* ── OVERVIEW ── */}
-          {!loading && tab === "overview" && (
+          {hasLoaded && tab === "overview" && (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {stats.map((s) => (
-                  <div key={s.label} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div key={s.label} className="ui-card ui-stat-card rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                     <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: s.iconBg, color: s.iconColor }}>{s.icon}</div>
                     <div className="text-2xl font-bold mb-0.5">{s.value}</div>
                     <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{s.label}</div>
@@ -411,68 +395,56 @@ export default function AdminDashboard({ profile, onLogout }) {
                   </div>
                 ))}
               </div>
-              <div className="grid lg:grid-cols-2 gap-4">
-                <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
-                    <span className="text-sm font-semibold">Recent Accounts</span>
-                    <button className="text-xs" style={{ color: "var(--primary)" }} onClick={() => setTab("accounts")}>View all →</button>
-                  </div>
-                  {users.slice(0, 5).map((u) => (
-                    <div key={u.id} className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 text-white"
-                        style={{ background: roleColors[roleLabel[u.role]] ?? "var(--primary)" }}>
-                        {u.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{u.full_name}</div>
-                        <div className="text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{u.email}</div>
-                      </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${roleColors[roleLabel[u.role]]}20`, color: roleColors[roleLabel[u.role]] }}>{roleLabel[u.role] ?? u.role}</span>
-                    </div>
-                  ))}
+              <section aria-label="Intern monitoring overview" className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="px-4 py-3 flex justify-between gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                  <h2 className="text-sm font-semibold">Intern Monitoring</h2><button className="text-xs underline" onClick={() => setTab("interns")}>View interns and assignments</button>
                 </div>
-                <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
-                    <span className="text-sm font-semibold">Audit Log — Recent</span>
-                    <button className="text-xs" style={{ color: "var(--primary)" }} onClick={() => setTab("auditlogs")}>View all →</button>
-                  </div>
-                  {logs.slice(0, 5).map((l) => (
-                    <div key={l.id} className="px-4 py-3 flex gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
-                      <span className="font-mono text-xs shrink-0 mt-0.5 w-20" style={{ color: "var(--muted-foreground)" }}>
-                        {new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" })}
-                      </span>
-                      <div>
-                        <div className="text-xs font-medium">{l.source === "database-trigger-v2" ? "DB recorded" : "Legacy (provenance unverified)"} | {l.action}</div>
-                        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{l.detail}</div>
-                      </div>
-                    </div>
-                  ))}
+                {metricsError ? <p role="status" className="p-4 text-xs">Attendance and progress unavailable. Refresh data to check current evidence.</p> : <>
+                  {internsForTab.slice(0, 5).map(intern => {
+                    const facts = serverMetrics[intern.id];
+                    return <div key={intern.id} className="px-4 py-3 space-y-1 text-xs" style={{ borderBottom: "1px solid var(--border)" }}>
+                      <p className="font-semibold">{intern.full_name}</p>
+                      <p>Logged: {displayHours(facts?.metric.logged)} hrs | Verified: {displayHours(facts?.metric.verified)} hrs | {facts?.metric.risk ?? "Unknown"}</p>
+                      <p>Attendance corrections: {facts?.pendingCorrections ?? "Unavailable"} | Approved documents: {facts?.metric.approved ?? "Unavailable"}/{facts?.documentCount ?? "Unavailable"} | Evaluation: {!facts ? "Unavailable" : facts.latestEvaluation ? "Available" : "No evaluation for assigned year"}</p>
+                    </div>;
+                  })}
+                  {internsForTab.length === 0 && <p className="p-4 text-xs">No intern accounts yet.</p>}
+                </>}
+              </section>
+              <section aria-label="System setup actions" className="ui-card rounded-xl p-4 space-y-3 text-xs" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <h2 className="text-sm font-semibold">System Setup</h2>
+                {!years.some(year => year.is_current) && <p>Set the current academic year in Master Data.</p>}
+                <div className="action-links">
+                  <button onClick={() => setTab("interns")}>Review assignments and document checklists</button>
+                  <button onClick={() => setTab("accounts")}>Review pending accounts</button>
+                  <button onClick={() => setTab("masterdata")}>Open master data</button>
                 </div>
-              </div>
+              </section>
             </>
           )}
 
           {/* ── ACCOUNTS ── */}
-          {!loading && tab === "accounts" && (
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
-                <input placeholder="Search users…" value={search} onChange={(e) => setSearch(e.target.value)}
-                  className="flex-1 text-sm px-3 py-1.5 rounded-lg border outline-none"
+          {hasLoaded && tab === "accounts" && (
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="px-4 py-3 toolbar" style={{ borderBottom: "1px solid var(--border)" }}>
+                <input aria-label="Search users" placeholder="Search users…" value={search} onChange={(e) => setSearch(e.target.value)}
+                  className="w-full sm:w-auto flex-1 min-w-0 text-sm px-3 py-1.5 rounded-lg border outline-none"
                   style={{ borderColor: "var(--border)", background: "var(--muted)", color: "var(--foreground)" }} />
-                <span className="text-xs whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                   New accounts are created via Register — edit role/status below
                 </span>
               </div>
-              <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <div role="region" aria-label="User accounts" tabIndex={0} className="table-region overflow-x-auto">
+              <table className="data-table w-full text-sm">
                 <thead>
                   <tr style={{ background: "var(--muted)" }}>
                     {["Name", "Role", "Email", "Status", "Joined", "Actions"].map((h) => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{h}</th>
+                      <th scope="col" key={h} className="text-left px-4 py-2.5 text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
+                  {!loading && !resourceErrors.profiles && filtered.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-sm" style={{ color: "var(--muted-foreground)" }}>{search.trim() ? "No users match your search." : "No user accounts available."}</td></tr>}
                   {filtered.map((u) => (
                     <tr key={u.id} style={{ borderTop: "1px solid var(--border)" }}>
                       <td className="px-4 py-3 font-medium">{u.full_name}</td>
@@ -482,7 +454,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                       <td className="px-4 py-3 text-xs" style={{ color: "var(--muted-foreground)" }}>{u.email}</td>
                       <td className="px-4 py-3">
                         <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ background: u.status === "Active" ? "var(--success-bg)" : "var(--danger-bg)", color: u.status === "Active" ? "var(--success)" : "var(--danger)" }}>
+                          style={{ background: u.status === "Active" ? "var(--success-bg)" : u.status === "Pending" ? "var(--warning-bg)" : "var(--danger-bg)", color: u.status === "Active" ? "var(--success)" : u.status === "Pending" ? "var(--warning)" : "var(--danger)" }}>
                           {u.status}
                         </span>
                       </td>
@@ -505,8 +477,8 @@ export default function AdminDashboard({ profile, onLogout }) {
           )}
 
           {/* ── INTERNS ── */}
-          {!loading && tab === "interns" && (
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          {hasLoaded && tab === "interns" && (
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
                 <span className="text-sm font-semibold">Intern Assignments</span>
                 <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
@@ -523,9 +495,8 @@ export default function AdminDashboard({ profile, onLogout }) {
                 {internsForTab.map((intern) => {
                   const form = internForms[intern.id] ?? { instructor_id: "", company_id: "", section_id: "", academic_year_id: "", required_hours: intern.required_hours ?? "" };
                   const checklist = docCounts[intern.id] ?? checklistState(null);
-                  const onboarding = onboardingItems(intern, academicRows(metricDocuments?.filter(d => d.intern_id === intern.id), intern.academic_year_id));
-                  const metric = internMetrics({ internId: intern.id, required: intern.required_hours, academicYearId: intern.academic_year_id ?? null,
-                    attendance: metricAttendance?.filter(a => a.intern_id === intern.id), documents: metricDocuments?.filter(d => d.intern_id === intern.id) });
+                  const onboarding = onboardingItems(intern, null, checklist);
+                  const metric = serverMetrics[intern.id]?.metric ?? internMetrics({ internId: intern.id, required: intern.required_hours });
                   return (
                     <div key={intern.id} className="px-4 py-4" style={{ borderTop: "1px solid var(--border)" }}>
                       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -609,10 +580,10 @@ export default function AdminDashboard({ profile, onLogout }) {
           )}
 
           {/* ── MASTER DATA ── */}
-          {!loading && tab === "masterdata" && (
+          {hasLoaded && tab === "masterdata" && (
             <div className="grid lg:grid-cols-2 gap-4">
               {masterSections.map((section) => (
-                <div key={section.key} className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div key={section.key} className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                     <span className="text-sm font-semibold">{section.title}</span>
                     <button onClick={() => openMasterAdd(section.table)} className="text-xs px-2.5 py-1 rounded-lg"
@@ -636,97 +607,39 @@ export default function AdminDashboard({ profile, onLogout }) {
             </div>
           )}
 
-          {/* ── IMPORT ── */}
-          {!loading && tab === "import" && (
-            <div className="space-y-4">
-              <div className="rounded-xl p-8 text-center" style={{ background: "var(--card)", border: "2px dashed var(--border)" }}>
-                <div className="flex justify-center mb-3" style={{ color: "var(--muted-foreground)" }}>
-                  <IconUpload size={36} strokeWidth={1.2} />
-                </div>
-                <h3 className="text-sm font-semibold mb-1">Bulk import unavailable</h3>
-                <p className="text-xs mb-4" style={{ color: "var(--muted-foreground)" }}>File upload, drag and drop, validation and account creation are not implemented. Register accounts individually, then approve them through an administrator.</p>
-                <button disabled className="text-sm px-4 py-2 rounded-lg" style={{ background: "var(--secondary)" }}>Import unavailable</button>
-              </div>
-              <div className="grid lg:grid-cols-2 gap-4">
-                {[{ kind: "student", title: "Student planning template" }, { kind: "instructor", title: "Instructor planning template" }].map((t) => (
-                  <div key={t.kind} className="rounded-xl p-4 flex flex-wrap gap-3 items-center justify-between" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                    <div>
-                      <div className="text-sm font-medium">{t.title}</div>
-                      <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>Blank headers only. Import is unavailable.</div>
-                    </div>
-                    <div className="flex gap-2">{["csv", "xlsx"].map((format) => <button key={format} disabled={exportBusy}
-                      className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "var(--secondary)", color: "var(--primary)" }}
-                      onClick={() => requestExport(() => templateArtifact(t.kind, format))}>Download {format.toUpperCase()}</button>)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* ── AUDIT LOGS ── */}
-          {!loading && tab === "auditlogs" && (
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          {hasLoaded && tab === "auditlogs" && (
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                 <span className="text-sm font-semibold">System Activity Log</span>
-                <button disabled={exportBusy} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "var(--secondary)", color: "var(--primary)" }}
-                  onClick={() => requestExport(() => auditArtifact(supabase))}>{exportBusy ? "Preparing CSV…" : "Export audit CSV"}</button>
               </div>
-              <p className="px-4 py-2 text-xs" style={{ color: "var(--muted-foreground)" }}>Audit history is paginated in deterministic 50-record pages. Export remains bounded at 50,000 records and is not a transactional snapshot.</p>
+              <p className="px-4 py-2 text-xs" style={{ color: "var(--muted-foreground)" }}>Audit history is paginated in deterministic 50-record pages.</p>
+              <form className="audit-filters px-4 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs" onSubmit={async event => { event.preventDefault(); try { await loadAuditPage(0, auditFilterDraft); } catch (error) { setResourceErrors(prev => ({ ...prev, audit: error.message })); } }}>
+                <label>Actor<select aria-label="Audit actor" value={auditFilterDraft.actor} onChange={event => setAuditFilterDraft(filters => ({ ...filters, actor: event.target.value }))}><option value="">All actors</option><option value="system">System / trusted SQL</option>{users.map(user => <option key={user.id} value={user.id}>{user.full_name}</option>)}</select></label>
+                <label>Table<select aria-label="Audit table" value={auditFilterDraft.table} onChange={event => setAuditFilterDraft(filters => ({ ...filters, table: event.target.value }))}><option value="">All tables</option>{auditTables.map(table => <option key={table}>{table}</option>)}</select></label>
+                <label>From (Manila)<input aria-label="Audit start date" type="date" value={auditFilterDraft.start} onChange={event => setAuditFilterDraft(filters => ({ ...filters, start: event.target.value }))} /></label>
+                <label>Through (Manila)<input aria-label="Audit end date" type="date" value={auditFilterDraft.end} onChange={event => setAuditFilterDraft(filters => ({ ...filters, end: event.target.value }))} /></label>
+                <button className="px-3 py-2 rounded-lg font-semibold" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }} disabled={loading || auditLoading}>Apply audit filters</button>
+                <span className="sm:col-span-2 lg:col-span-3 self-center leading-relaxed" style={{ color: "var(--muted-foreground)" }}>The history uses the applied filters. Unapplied edits do not change the current results.</span>
+              </form>
               {resourceErrors.audit && <p role="alert" className="px-4 py-2 text-xs" style={{ color: "var(--danger)" }}>Audit history unavailable: {resourceErrors.audit}</p>}
               {logs.map((l) => (
-                <div key={l.id} className="px-4 py-3 flex gap-4 items-start" style={{ borderBottom: "1px solid var(--border)" }}>
-                  <span className="font-mono text-xs shrink-0 mt-0.5 w-20" style={{ color: "var(--muted-foreground)" }}>
-                    {new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" })}
+                <div key={l.id} className="px-4 py-3 grid grid-cols-1 lg:grid-cols-[9rem_9rem_minmax(0,1fr)] gap-x-4 gap-y-2 items-start" style={{ borderBottom: "1px solid var(--border)" }}>
+                  <span className="font-mono text-xs shrink-0 mt-0.5 w-36" style={{ color: "var(--muted-foreground)" }}>
+                    {new Date(l.created_at).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Manila" })}
                   </span>
-                  <div className="w-36 shrink-0 text-xs font-medium truncate">{l.actor_name}</div>
+                  <div className="text-xs font-medium break-words">{l.actor_name}</div>
                   <div className="flex-1">
-                    <div className="text-sm">{l.source === "database-trigger-v2" ? "DB recorded" : "Legacy (provenance unverified)"} | {l.action}</div>
-                    <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>{l.detail}</div>
+                    <div className="text-sm break-words">{l.source === "database-trigger-v2" ? "DB recorded" : "Legacy (provenance unverified)"} | {l.action}</div>
+                    <div className="text-xs mt-0.5 break-words" style={{ color: "var(--muted-foreground)" }}>{l.detail}</div>
+                    <details className="mt-2 text-xs"><summary>View recorded changes</summary><div role="region" aria-label="Recorded audit changes" tabIndex={0} className="table-region overflow-x-auto"><table className="data-table w-full text-xs"><thead><tr><th>Field</th><th>Previous</th><th>New</th></tr></thead><tbody>{auditChanges(l.event_data).map(change => <tr key={change.field}><td>{change.field}</td><td>{change.before}</td><td>{change.after}</td></tr>)}</tbody></table></div><pre className="whitespace-pre-wrap break-words">{JSON.stringify(l.event_data ?? { note: "No structured metadata recorded" }, null, 2)}</pre></details>
                   </div>
                 </div>
               ))}
-              <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="px-4 py-3 toolbar justify-between" style={{ borderTop: "1px solid var(--border)" }}>
                 <button disabled={auditLoading || auditPage === 0 || Boolean(resourceErrors.audit)} onClick={() => changeAuditPage(Math.max(0, auditPage - 1))} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: "var(--secondary)" }}>Previous</button>
                 <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{auditLoading ? "Loading audit page… · " : ""}Page {auditPage + 1}{auditCount == null ? "" : ` · ${auditCount} records`}</span>
                 <button disabled={auditLoading || Boolean(resourceErrors.audit) || auditCount == null || (auditPage + 1) * AUDIT_PAGE_SIZE >= auditCount} onClick={() => changeAuditPage(auditPage + 1)} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40" style={{ background: "var(--secondary)" }}>Next</button>
-              </div>
-            </div>
-          )}
-
-          {/* ── BACKUP ── */}
-          {!loading && tab === "backup" && (
-            <div className="grid lg:grid-cols-2 gap-4">
-              <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                <h3 className="text-sm font-semibold mb-4">Database Backup</h3>
-                <p className="text-xs mb-4" style={{ color: "var(--muted-foreground)" }}>
-                  Backup status is not connected. An authorized operator must verify
-                  backup availability, retention and restore capability in the
-                  Supabase dashboard. This application does not create snapshots.
-                </p>
-                <button disabled
-                  className="w-full py-2.5 rounded-lg text-sm font-medium disabled:opacity-60 transition-opacity"
-                  style={{ background: "var(--primary)", color: "#fff" }}>
-                  Manual backup unavailable
-                </button>
-              </div>
-              <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                <h3 className="text-sm font-semibold mb-4">Role Permissions</h3>
-                <div className="space-y-2">
-                  {[
-                    { role: "System Admin", perms: ["Full access", "User management", "Audit logs"] },
-                    { role: "Instructor", perms: ["Assigned evaluations", "Reports unavailable", "Assigned attendance", "Manage assigned alerts"] },
-                    { role: "Intern", perms: ["Log attendance", "View evaluations", "View progress"] },
-                  ].map((r) => (
-                    <div key={r.role} className="p-3 rounded-lg" style={{ background: "var(--muted)" }}>
-                      <div className="text-xs font-semibold mb-2">{r.role}</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {r.perms.map((p) => (
-                          <span key={p} className="text-xs px-2 py-0.5 rounded-full" style={{ background: "var(--primary-light)", color: "var(--primary)" }}>{p}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           )}
